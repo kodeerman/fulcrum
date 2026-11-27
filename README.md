@@ -133,6 +133,15 @@ All configuration lives in `.env` at the repo root. Key fields:
 `.env.example` lists the full set with inline comments and provider-specific
 SMTP examples.
 
+## AI Usage Disclosure
+
+In some files of this fork, an LLM or similar agent was used to help write or validate tests. The following files listed contain a disclosure where it was used:
+
+`test_data_loader.py under /server_backend/tests/test_data_loader.py` | Declared in header, outline, some implementation
+`test_stats_engine.py under /server_backend/tests/test_stats_engine.py` | Declared in header, outline, most implementations
+
+A qualified computer scientist has reviewed these files to ensure no errors, and that it does not contain malicious code.
+
 ## License
 
 See [LICENSE](LICENSE).

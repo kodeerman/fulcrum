@@ -1,6 +1,7 @@
 #unit tests for stats_engine.py
+#the following unit tests were co-developed using Claude, as per the AI USAGE DISCLOSURE in the readme
 """
-Tests for app.utility.analytics.stats_engine  (run from server_backend/:  pytest tests/test_stats_engine.py)
+Tests for app.utility.analytics.stats_engine
 
 These tests ARE the spec. Public API to implement in
 server_backend/app/utility/analytics/stats_engine.py:
