@@ -3,7 +3,6 @@
 #the following unit tests were co-developed using Claude, as per the AI USAGE DISCLOSURE in the readme
 """
 Tests for app.utility.analytics.data_loader
-Run from server_backend/:  pytest tests/test_data_loader.py
 
 No database needed: a FakeCursor returns canned rows and the CSVs live in tmp_path.
 Needs `polars` installed (add it to requirements.txt); the module is skipped without it.
