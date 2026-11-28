@@ -33,8 +33,8 @@ import meowra from '@/assets/images/dr-meowra-swimsuit.png'
 .meowra-card {
   display: grid;
   grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
-  background: #f3f8fc;
-  color: #162b40;
+  background: rgb(var(--v-theme-surface));
+  color: rgb(var(--v-theme-on-surface));
   border-radius: 16px;
 }
 img {

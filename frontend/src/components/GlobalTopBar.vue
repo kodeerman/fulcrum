@@ -1,5 +1,5 @@
 <template>
-  <v-app-bar color="primary" class="fulcrum-toolbar" elevation="1" :order="-1">
+  <v-app-bar color="#102944" class="fulcrum-toolbar" elevation="1" :order="-1">
     <div class="toolbar-brand">
       <router-link to="/" class="fulcrum-home" aria-label="Fulcrum home">
         <span class="home-icon"
@@ -38,6 +38,8 @@
         <span class="engine-label-short" aria-hidden="true">Charts</span>
       </v-btn>
     </nav>
+
+    <ThemeMenu class="toolbar-action" />
 
     <v-btn
       icon="mdi-help-circle-outline"
@@ -131,11 +133,13 @@
 
 <script>
 import api from '@/axiosInstance'
+import ThemeMenu from './ThemeMenu.vue'
 import { auth } from '@/stores/auth'
 import { useStudyStore } from '@/stores/study'
 
 export default {
   name: 'GlobalTopBar',
+  components: { ThemeMenu },
   data() {
     return {
       displayName: 'Loading...',
@@ -275,7 +279,7 @@ export default {
   opacity: 0;
 }
 
-.toolbar-action {
+.fulcrum-toolbar :deep(.toolbar-action) {
   width: 2.5rem;
   height: 2.5rem;
   margin-inline-end: 0.375rem;
@@ -283,7 +287,7 @@ export default {
 
 .fulcrum-home:focus-visible,
 .engine-button:focus-visible,
-.toolbar-action:focus-visible {
+.fulcrum-toolbar :deep(.toolbar-action:focus-visible) {
   outline: 2px solid #fff;
   outline-offset: 2px;
 }
@@ -313,7 +317,7 @@ export default {
     font-size: 0.75rem;
   }
 
-  .toolbar-action {
+  .fulcrum-toolbar :deep(.toolbar-action) {
     width: 2.25rem;
     height: 2.25rem;
     margin-inline-end: 0.125rem;

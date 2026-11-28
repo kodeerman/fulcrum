@@ -1,5 +1,7 @@
 <script setup>
-import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useTheme } from 'vuetify'
+import { chartAppearance, downloadChart } from '@/utility/chartAppearance'
 import {
   BarController,
   BarElement,
@@ -16,11 +18,13 @@ const props = defineProps({
 })
 
 const canvas = ref(null)
+const theme = useTheme()
 let chart
 
-onMounted(() => {
+function createChart(target, dark, responsive = true) {
+  const appearance = chartAppearance(dark)
   const { labels, summaries, outcome, grouping } = props.result
-  chart = new Chart(canvas.value, {
+  return new Chart(target, {
     type: 'bar',
     data: {
       labels,
@@ -28,18 +32,29 @@ onMounted(() => {
         {
           label: `Mean ${outcome}`,
           data: summaries.map(summary => summary.mean),
-          backgroundColor: '#23628c',
+          backgroundColor: dark ? '#71b7ee' : '#23628c',
         },
       ],
     },
     options: {
+      responsive,
+      devicePixelRatio: responsive ? undefined : 1,
+      color: appearance.text,
       animation: false,
       maintainAspectRatio: false,
       scales: {
-        x: { title: { display: true, text: grouping } },
+        x: {
+          ...appearance.axis,
+          title: { display: true, text: grouping, color: appearance.text },
+        },
         y: {
+          ...appearance.axis,
           beginAtZero: true,
-          title: { display: true, text: `Mean ${outcome}` },
+          title: {
+            display: true,
+            text: `Mean ${outcome}`,
+            color: appearance.text,
+          },
         },
       },
       plugins: {
@@ -50,27 +65,26 @@ onMounted(() => {
         },
       },
     },
-    plugins: [
-      {
-        id: 'whiteBackground',
-        beforeDraw({ ctx, width, height }) {
-          ctx.save()
-          ctx.fillStyle = '#fff'
-          ctx.fillRect(0, 0, width, height)
-          ctx.restore()
-        },
-      },
-    ],
+    plugins: [appearance.backdrop],
   })
-})
+}
 
+function render() {
+  chart?.destroy()
+  chart = createChart(canvas.value, theme.global.current.value.dark)
+}
+
+onMounted(render)
+watch(() => theme.global.current.value.dark, render)
 onBeforeUnmount(() => chart?.destroy())
 
-function downloadChart() {
-  const link = document.createElement('a')
-  link.href = chart.toBase64Image()
-  link.download = 'fulcrum-group-means.png'
-  link.click()
+function download() {
+  downloadChart(
+    chart,
+    createChart,
+    theme.global.current.value.dark,
+    'fulcrum-group-means.png',
+  )
 }
 </script>
 
@@ -78,9 +92,7 @@ function downloadChart() {
   <v-card variant="outlined" class="pa-5 mt-5">
     <div class="d-flex flex-wrap align-center ga-3 mb-3">
       <h3 class="text-h6 mr-auto">Group means</h3>
-      <v-btn variant="outlined" @click="downloadChart"
-        >Download chart PNG</v-btn
-      >
+      <v-btn variant="outlined" @click="download">Download chart PNG</v-btn>
     </div>
     <div class="chart-frame">
       <canvas

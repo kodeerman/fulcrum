@@ -1,6 +1,8 @@
 <script setup>
 import { onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import { extent as valueExtent } from 'd3'
+import { useTheme } from 'vuetify'
+import { chartAppearance, downloadChart } from '@/utility/chartAppearance'
 import {
   BarController,
   BarElement,
@@ -32,6 +34,7 @@ Chart.register(
 
 const props = defineProps({ model: { type: Object, required: true } })
 const canvas = ref(null)
+const theme = useTheme()
 let chart
 
 const palette = [
@@ -43,8 +46,9 @@ const palette = [
   '#476683',
 ]
 
-function render() {
-  chart?.destroy()
+function createChart(target, dark, responsive = true) {
+  const appearance = chartAppearance(dark)
+  const lineColor = dark ? '#ffaa82' : '#ae4a24'
 
   const {
     type,
@@ -65,7 +69,12 @@ function render() {
     !histogram &&
     points.length > 1 &&
     points.length <= palette.length
-  const colors = groupLegend ? palette.slice(0, points.length) : palette[0]
+  const colorsForTheme = dark
+    ? ['#71b7ee', '#bda3fa', '#56c6b3', '#ffab80', '#f68ab5', '#a9c8df']
+    : palette
+  const colors = groupLegend
+    ? colorsForTheme.slice(0, points.length)
+    : colorsForTheme[0]
   const data = numericX
     ? points.map(({ x, y }) => ({ x, y }))
     : points.map(point => (box ? [point.q1, point.q3] : point.y))
@@ -81,7 +90,7 @@ function render() {
   const min = Math.min(...extent.map(([low]) => low))
   const max = Math.max(...extent.map(([, high]) => high))
 
-  chart = new Chart(canvas.value, {
+  return new Chart(target, {
     type: box || histogram ? 'bar' : type,
     data: {
       labels: numericX ? undefined : points.map(point => point.x),
@@ -90,7 +99,7 @@ function render() {
           label: box ? 'Interquartile range' : yLabel,
           data,
           backgroundColor: colors,
-          borderColor: palette[0],
+          borderColor: colorsForTheme[0],
           maxBarThickness: histogram ? undefined : 68,
           categoryPercentage: histogram ? 1 : undefined,
           barPercentage: histogram ? 1 : undefined,
@@ -106,7 +115,7 @@ function render() {
                   x,
                   y: regression.intercept + regression.slope * x,
                 })),
-                borderColor: '#ae4a24',
+                borderColor: lineColor,
                 borderWidth: 2,
                 pointRadius: 0,
               },
@@ -115,35 +124,50 @@ function render() {
       ],
     },
     options: {
+      responsive,
+      devicePixelRatio: responsive ? undefined : 1,
+      color: appearance.text,
       animation: false,
       maintainAspectRatio: false,
       scales: {
         x: {
+          ...appearance.axis,
           type: numericX ? 'linear' : 'category',
-          title: { display: settings.axes, text: xLabel },
+          title: {
+            display: settings.axes,
+            text: xLabel,
+            color: appearance.text,
+          },
         },
         y: {
+          ...appearance.axis,
           beginAtZero: type === 'bar' || histogram,
           suggestedMin: Number.isFinite(min) ? min : undefined,
           suggestedMax: Number.isFinite(max) ? max : undefined,
-          title: { display: settings.axes, text: yLabel },
+          title: {
+            display: settings.axes,
+            text: yLabel,
+            color: appearance.text,
+          },
         },
       },
       plugins: {
-        title: { display: true, text: title },
+        title: { display: true, text: title, color: appearance.text },
         legend: {
           display: settings.legend,
           onClick() {},
           labels: groupLegend
             ? {
+                color: appearance.text,
                 generateLabels: () =>
                   points.map((point, index) => ({
                     text: `${point.x} (n=${point.count})`,
                     fillStyle: colors[index],
                     strokeStyle: colors[index],
+                    fontColor: appearance.text,
                   })),
               }
-            : undefined,
+            : { color: appearance.text },
         },
         tooltip: {
           callbacks: {
@@ -171,19 +195,14 @@ function render() {
       },
     },
     plugins: [
+      appearance.backdrop,
       {
         id: 'statsChartDrawing',
-        beforeDraw({ ctx, width, height }) {
-          ctx.save()
-          ctx.fillStyle = '#fff'
-          ctx.fillRect(0, 0, width, height)
-          ctx.restore()
-        },
         afterDatasetsDraw(instance) {
           if (!box && !errorBars) return
           const { ctx, scales } = instance
           ctx.save()
-          ctx.strokeStyle = '#162536'
+          ctx.strokeStyle = appearance.text
           ctx.lineWidth = 2
           const bars = instance.getDatasetMeta(0).data
           points.forEach((point, index) => {
@@ -222,15 +241,22 @@ function render() {
   })
 }
 
+function render() {
+  chart?.destroy()
+  chart = createChart(canvas.value, theme.global.current.value.dark)
+}
+
 onMounted(render)
-watch(() => props.model, render)
+watch([() => props.model, () => theme.global.current.value.dark], render)
 onBeforeUnmount(() => chart?.destroy())
 
 function download() {
-  const link = document.createElement('a')
-  link.href = chart.toBase64Image()
-  link.download = `fulcrum-${props.model.type}-chart.png`
-  link.click()
+  downloadChart(
+    chart,
+    createChart,
+    theme.global.current.value.dark,
+    `fulcrum-${props.model.type}-chart.png`,
+  )
 }
 
 defineExpose({ download })

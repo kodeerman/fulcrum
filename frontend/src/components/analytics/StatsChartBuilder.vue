@@ -496,7 +496,7 @@ input[type='checkbox'] {
   appearance: auto;
 }
 .settings-preview {
-  background: #f1f5f9;
+  background: rgba(var(--v-theme-primary), 0.08);
   padding: 1rem;
   border-radius: 6px;
 }
