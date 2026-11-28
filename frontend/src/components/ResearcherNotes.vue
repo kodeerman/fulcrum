@@ -23,14 +23,19 @@
       <v-radio label="No" :value="false" />
     </v-radio-group>
 
-    <!-- Submit buttton -->
+    <v-alert v-if="saveError" type="error" variant="tonal" role="alert">
+      {{ saveError }}
+    </v-alert>
+
+    <!-- Save and finish -->
     <v-row class="btn-row" justify="center">
       <v-btn
         class="me-4 submit-btn"
         type="submit"
         :disabled="!isFormValid"
-        color="success"
-        >Submit</v-btn
+        :loading="saveInProgress"
+        color="primary"
+        >Save and finish session</v-btn
       >
     </v-row>
   </form>
@@ -38,7 +43,6 @@
 
 <script>
 import api from '@/axiosInstance'
-import { useStudyStore } from '@/stores/study'
 
 export default {
   name: 'ResearcherNotes',
@@ -54,6 +58,7 @@ export default {
       comments: '',
       isValid: true,
       saveInProgress: false,
+      saveError: '',
       commentsRules: [
         v => v.length <= 250 || 'Comments must be less than 250 characters.',
       ],
@@ -68,9 +73,10 @@ export default {
 
   methods: {
     async submit() {
-      if (!this.isFormValid || !this.participantSessId) {
+      if (this.saveInProgress || !this.isFormValid || !this.participantSessId) {
         return
       }
+      this.saveError = ''
       this.saveInProgress = true
       try {
         const submissionData = {
@@ -80,8 +86,9 @@ export default {
         }
         const path = `/save_facilitator_session_notes`
         await api.post(path, submissionData)
-        this.$emit('submit')
+        this.$emit('submit', submissionData.is_valid === 1)
       } catch (error) {
+        this.saveError = 'Could not save this session. Try again.'
         console.error(
           `Failed to save facilitator notes:`,
           error.response?.data || error.message,

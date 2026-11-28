@@ -250,7 +250,17 @@
 
     <v-row justify="center">
       <v-col cols="auto">
-        <v-btn @click="setupSession()" color="primary">Setup New Session</v-btn>
+        <div class="d-flex flex-wrap ga-3">
+          <v-btn @click="setupSession()" color="primary">Setup New Session</v-btn>
+          <v-btn
+            v-if="studyID"
+            :to="{ name: 'StatsEngine', query: { study: studyID } }"
+            prepend-icon="mdi-chart-box-outline"
+            variant="outlined"
+          >
+            Analyze study data
+          </v-btn>
+        </div>
       </v-col>
     </v-row>
   </v-navigation-drawer>

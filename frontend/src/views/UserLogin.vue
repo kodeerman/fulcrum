@@ -159,7 +159,7 @@ export default {
 }
 .login-container {
   height: 100vh;
-  background: linear-gradient(to right, #f5f7fa, #c3cfe2);
+  background: linear-gradient(to right, rgb(var(--v-theme-background)), rgba(var(--v-theme-primary), 0.13));
 }
 
 .login-card {
@@ -172,16 +172,16 @@ export default {
   font-size: 2rem;
   font-weight: bold;
   margin-bottom: 4px;
-  color: #333;
+  color: rgb(var(--v-theme-on-surface));
 }
 
 .login-subtitle {
   font-size: 1.1rem;
-  color: #666;
+  color: rgba(var(--v-theme-on-surface), 0.72);
 }
 
 .register-link {
-  color: #1976d2;
+  color: rgb(var(--v-theme-primary));
   text-decoration: none;
   font-weight: 500;
 }

@@ -23,16 +23,25 @@
         title="Data Analytics"
       ></v-list-item>
       <v-list-item
-        to="/stats"
+        :to="{ name: 'StatsEngine', query: studyQuery }"
         prepend-icon="mdi-calculator"
         title="Stats Engine"
+      ></v-list-item>
+      <v-list-item
+        :to="{
+          name: 'StatsEngine',
+          query: { ...studyQuery, engine: 'charts' },
+        }"
+        prepend-icon="mdi-chart-bar"
+        title="Chart Display Engine"
       ></v-list-item>
     </v-list>
   </v-navigation-drawer>
 </template>
 
 <script>
-import { useRouter } from 'vue-router'
+import { computed } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useStudyStore } from '@/stores/study'
 import { auth } from '@/stores/auth'
 
@@ -40,6 +49,12 @@ export default {
   name: 'GlobalNavBar',
   setup() {
     const router = useRouter()
+    const route = useRoute()
+    const studyQuery = computed(() =>
+      route.name === 'StatsEngine' && route.query.study
+        ? { study: route.query.study }
+        : {},
+    )
     const studyStore = useStudyStore()
 
     const handleCreateNewStudy = () => {
@@ -53,6 +68,7 @@ export default {
 
     return {
       auth,
+      studyQuery,
       handleCreateNewStudy,
     }
   },

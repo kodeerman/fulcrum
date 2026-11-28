@@ -143,6 +143,9 @@ class TestIndependentTTest:
         assert r["t_stat"] == pytest.approx(-1.0)
         assert r["p_value"] == pytest.approx(0.34659350708733416)
         assert r["df"] == pytest.approx(8.0)
+        assert r["mean_difference"] == -1
+        ci = sp.ttest_ind(self.A, self.B, equal_var=False).confidence_interval()
+        assert (r["ci_low"], r["ci_high"]) == pytest.approx(ci)
         assert_json_safe(r)
 
     def test_equal_var_matches_scipy(self):
@@ -183,6 +186,10 @@ class TestPairedTTest:
         assert r["t_stat"] == pytest.approx(-3.1378581622109443)
         assert r["p_value"] == pytest.approx(0.03491970667453904)
         assert r["df"] == 4
+        assert r["pairs"] == 5
+        assert r["mean_difference"] == pytest.approx(-1.6)
+        ci = sp.ttest_rel([1, 2, 3, 4, 5], [2, 4, 5, 4, 8]).confidence_interval()
+        assert (r["ci_low"], r["ci_high"]) == pytest.approx(ci)
         assert_json_safe(r)
 
     def test_length_mismatch_raises(self):

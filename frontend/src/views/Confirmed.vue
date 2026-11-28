@@ -74,7 +74,7 @@ export default {
 <style scoped>
 .confirmed-container {
   height: 100vh;
-  background: linear-gradient(to right, #f5f7fa, #c3cfe2);
+  background: linear-gradient(to right, rgb(var(--v-theme-background)), rgba(var(--v-theme-primary), 0.13));
 }
 
 .confirmed-card {

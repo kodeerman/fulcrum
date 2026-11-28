@@ -72,7 +72,19 @@ const router = createRouter({
         {
           path: '/stats',
           name: 'StatsEngine',
+          props: route => ({
+            studyId:
+              typeof route.query.study === 'string' &&
+              /^\d+$/.test(route.query.study)
+                ? route.query.study
+                : null,
+          }),
           component: () => import('../views/StatsEngine.vue'),
+        },
+        {
+          path: '/dr-meowra',
+          name: 'DrMeowra',
+          component: () => import('../views/DrMeowra.vue'),
         },
         // TEMP to show pinging server using router
         {
@@ -101,18 +113,30 @@ const router = createRouter({
   ],
 })
 
-const publicPages = ['UserLogin', 'UserRegister', 'Confirmed', 'AboutPage', 'StatsEngine']
+const publicPages = [
+  'UserLogin',
+  'UserRegister',
+  'Confirmed',
+  'AboutPage',
+  'StatsEngine',
+  'DrMeowra',
+]
 
 router.beforeEach(async (to, from, next) => {
   if (!publicPages.includes(to.name)) {
     try {
       await pingServer()
-    } catch (err) {
+    } catch {
       // Silently fail: no redirect, no block.
     }
   }
 
   next()
+})
+
+// Restore the sidebar on a direct visit without delaying the public Stats Engine.
+router.afterEach((to, from, failure) => {
+  if (!failure && to.name === 'StatsEngine' && !from.name) void pingServer()
 })
 
 export default router

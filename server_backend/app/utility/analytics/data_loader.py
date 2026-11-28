@@ -102,6 +102,7 @@ INNER JOIN task t ON t.task_id = tr.task_id
 LEFT JOIN factor f ON f.factor_id = tr.factor_id
 WHERE ps.study_id = %s
   AND (ps.is_valid = 1 OR %s = 1)
+{session_filter}
 ORDER BY tr.started_at, tr.trial_id
 """
 
@@ -118,6 +119,7 @@ INNER JOIN participant_session ps ON ps.participant_session_id = tr.participant_
 INNER JOIN measurement_option mo ON mo.measurement_option_id = sdi.measurement_option_id
 WHERE ps.study_id = %s
   AND (ps.is_valid = 1 OR %s = 1)
+{session_filter}
 ORDER BY sdi.session_data_instance_id
 """
 
@@ -290,6 +292,7 @@ def load_study(
     base_dir: Optional[str] = None,
     include_invalid: bool = False,
     prefer: str = "csv",
+    completed_only: bool = False,
 ) -> StudyData:
     """Load trials and the file index for a study.
     
@@ -297,13 +300,21 @@ def load_study(
     base_dir         results root; default $RESULTS_BASE_DIR_PATH or the Docker path.
     include_invalid  also include sessions flagged is_valid = 0.
     prefer           "csv" or "db": which duration source wins when both exist.
+    completed_only   restrict trials and telemetry to finalized sessions.
 
     TEST THIS FEATURE BEFORE USING IT!!! It may not work as expected and is UNTESTED.
     """
     base_dir = base_dir or os.environ.get("RESULTS_BASE_DIR_PATH", DEFAULT_RESULTS_BASE_DIR)
     params = (study_id, 1 if include_invalid else 0)
-    trial_rows = query_rows(cursor, TRIALS_QUERY, params)
-    file_rows = query_rows(cursor, FILES_QUERY, params)
+    session_filter = (
+        "AND (ps.status = 'complete' OR ps.ended_at IS NOT NULL)" if completed_only else ""
+    )
+    trial_rows = query_rows(
+        cursor, TRIALS_QUERY.format(session_filter=session_filter), params
+    )
+    file_rows = query_rows(
+        cursor, FILES_QUERY.format(session_filter=session_filter), params
+    )
     warnings: list[str] = []
     file_records: list[dict[str, Any]] = []
     csv_durations: dict[int, float] = {}  #trial_id -> largest running_time over its CSVs

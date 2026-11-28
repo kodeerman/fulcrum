@@ -8,6 +8,7 @@ studyStore.initializeFromSession()
 
 // Use custom key only for StudyForm
 const routerViewKey = computed(() => {
+  if (route.name === 'StatsEngine') return route.name
   return route.name === 'StudyForm'
     ? `StudyForm-${studyStore.formResetKey}`
     : route.fullPath

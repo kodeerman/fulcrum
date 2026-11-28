@@ -4,6 +4,7 @@ import json
 import sys
 import os
 from io import BytesIO
+from types import SimpleNamespace
 
 # Setup import path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -28,6 +29,23 @@ class TestAnalyticsRoutes(unittest.TestCase):
     def tearDown(self):
         # Clean up patchers
         self.db_patcher.stop()
+
+    def test_analysis_dataset_requires_a_signed_in_user(self):
+        with patch("flask_security.current_user", SimpleNamespace(is_authenticated=False)):
+            response = self.client.get("/api/analytics/123/analysis-dataset")
+
+        self.assertEqual(response.status_code, 401)
+        self.mock_db.assert_not_called()
+
+    def test_analysis_dataset_rejects_users_without_study_access(self):
+        cursor = self.mock_conn.cursor.return_value.__enter__.return_value
+        cursor.fetchone.return_value = None
+        with patch("flask_security.current_user", SimpleNamespace(is_authenticated=True, id=7)):
+            response = self.client.get("/api/analytics/123/analysis-dataset")
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(cursor.execute.call_count, 1)
+        self.assertEqual(cursor.execute.call_args.args[1], (123, 7))
 
     @patch("app.routes.analytics.get_study_summary")
     def test_get_study_summary(self, mock_get_summary):

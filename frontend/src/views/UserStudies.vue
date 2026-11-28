@@ -715,7 +715,7 @@ export default {
 }
 
 .table-background {
-  background-color: #ffffff !important;
+  background-color: rgb(var(--v-theme-surface)) !important;
 }
 
 .v-text-field {
@@ -755,13 +755,13 @@ h2 {
 .share-title {
   font-size: 1.5rem;
   font-weight: bold;
-  color: #333;
+  color: rgb(var(--v-theme-on-surface));
 }
 
 .people-access-label {
   font-weight: 600;
   font-size: 0.95rem;
-  color: #444;
+  color: rgba(var(--v-theme-on-surface), 0.83);
   margin-top: 10px;
 }
 
@@ -782,7 +782,7 @@ h2 {
   min-width: 80px;
   text-align: right;
   font-weight: 500;
-  color: #444;
+  color: rgba(var(--v-theme-on-surface), 0.83);
 }
 .role-select {
   min-width: 120px;
@@ -796,7 +796,7 @@ h2 {
 
 .user-email {
   font-size: 0.95rem;
-  color: #333;
+  color: rgb(var(--v-theme-on-surface));
   margin-right: 16px;
   max-width: 220px;
   overflow: hidden;
@@ -808,7 +808,7 @@ h2 {
   font-weight: 500;
   min-width: 80px;
   text-align: right;
-  color: #444;
+  color: rgba(var(--v-theme-on-surface), 0.83);
 }
 
 .user-row {
@@ -818,7 +818,7 @@ h2 {
 }
 
 .user-row:hover {
-  background-color: #f5f5f5;
+  background-color: rgb(var(--v-theme-background));
 }
 /* maybe ditch this below idk */
 .v-text-field,

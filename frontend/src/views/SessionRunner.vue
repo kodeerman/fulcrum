@@ -1,6 +1,6 @@
 <template>
   <v-main>
-    <v-row>
+    <v-row v-if="!completedSession">
       <v-col cols="12" md="10" offset-md="1">
         <v-progress-linear
           :model-value="progressTracker"
@@ -11,7 +11,27 @@
         />
       </v-col>
     </v-row>
-    <v-container class="mt-5" v-if="currStepIndex != null">
+    <v-container v-if="completedSession" class="mt-5 session-complete">
+      <v-card class="pa-6" variant="outlined">
+        <h1 ref="completionHeading" tabindex="-1" class="text-h5 mb-2">Session saved</h1>
+        <p class="mb-5">
+          {{ completedSession.isValid
+            ? 'Open the study’s analysis table to review available trials, export a CSV, or create a chart.'
+            : 'This session was marked invalid. You can still analyze trials from other valid sessions in this study.' }}
+        </p>
+        <div class="d-flex flex-wrap ga-3">
+          <v-btn
+            :to="{ name: 'StatsEngine', query: { study: sessionJson.study_id } }"
+            prepend-icon="mdi-chart-box-outline"
+            color="primary"
+          >
+            Analyze study data
+          </v-btn>
+          <v-btn variant="outlined" @click="exit">Back to study</v-btn>
+        </div>
+      </v-card>
+    </v-container>
+    <v-container v-else-if="currStepIndex != null" class="mt-5">
       <v-row>
         <v-col cols="12" md="10" offset-md="1">
           <!-- Facilitator Action Req to start Local Tracking -->
@@ -71,7 +91,7 @@
           <ResearcherNotes
             v-if="currStepIndex == 5"
             :participantSessId="participantSessId"
-            @submit="exit"
+            @submit="completeSession"
           />
         </v-col>
       </v-row>
@@ -79,6 +99,7 @@
   </v-main>
   <!-- Exit button -->
   <v-btn
+    v-if="!completedSession"
     class="quit-btn mb-4"
     color="primary"
     variant="text"
@@ -136,6 +157,7 @@ export default {
   data() {
     return {
       currStepIndex: null,
+      completedSession: null,
       participantSessId: null,
       sessionJson: null,
       trackingRequired: true, // Not true if they selected no measurement options for any of their tasks
@@ -188,6 +210,15 @@ export default {
   },
 
   methods: {
+    async completeSession(isValid) {
+      this.completedSession = { isValid }
+      const studyStore = useStudyStore()
+      studyStore.setDrawerStudyID(this.sessionJson.study_id)
+      studyStore.clearSessionID()
+      await this.$nextTick()
+      this.$refs.completionHeading?.focus()
+    },
+
     // Move to next step in session workflow + save current step to db incase user wants to exit and come back later
     async advanceNextStep() {
       try {
@@ -365,6 +396,9 @@ export default {
 </script>
 
 <style scoped>
+.session-complete {
+  max-width: 50rem;
+}
 .btn-row {
   display: flex;
   margin-top: 50px;

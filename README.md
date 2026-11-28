@@ -37,6 +37,18 @@ docker compose up --build
 When the stack is healthy:
 
 - Frontend: <http://localhost/>
+- Stats Engine: <http://localhost/stats>. Open it from the sign-in page header
+  or the sidebar after signing in. In Data Analytics, select a study and choose
+  **Analyze study data** to preview trials from completed, valid sessions.
+  The same button is available after **Save and finish session** and in the
+  study panel. Import the preview into either engine or choose **Download
+  analysis CSV**.
+- Chart Display Engine: <http://localhost/stats?engine=charts>. Switch between
+  engines to keep working with the same dataset. Use **Visualize selection** on
+  a statistics result to generate a bar chart for that outcome and grouping.
+  The chart picker also includes histograms and scatter plots with optional
+  linear regression. For a paired two-sided t-test, provide a `Participant code`
+  or `Participant ID` column and choose the two conditions to compare.
 - Backend health check: <http://localhost/api/ping>
 
 To wipe the database and reseed from scratch:
