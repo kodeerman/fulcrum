@@ -7,6 +7,8 @@ import {
   shallowRef,
   watch,
 } from 'vue'
+import { useTheme } from 'vuetify'
+import { pointColor, supportsPointColors } from '@/utility/pointColors'
 import StatsChartCanvas from './StatsChartCanvas.vue'
 import { aggregations, buildChart, chartTypes } from '@/utility/statsChart'
 
@@ -81,6 +83,54 @@ const columns = computed(() => {
     { key: 'count', title: 'Rows' },
   ]
 })
+const theme = useTheme()
+const colorEditing = ref(false)
+const editableColors = computed(
+  () => chart.value && supportsPointColors(chart.value.type),
+)
+const tableColumns = computed(() =>
+  colorEditing.value && editableColors.value
+    ? [...columns.value, { key: 'color', title: 'Color', sortable: false }]
+    : columns.value,
+)
+const canResetColors = computed(() =>
+  chart.value?.points.some(point => point.color),
+)
+const swatch = point =>
+  pointColor(chart.value, point.colorIndex, theme.global.current.value.dark)
+
+function editPointColor(point, event) {
+  const color = event.target.value
+  if (!/^#[\da-f]{6}$/i.test(color)) return
+  chart.value = {
+    ...chart.value,
+    points: chart.value.points.map((item, index) =>
+      index === point.colorIndex ? { ...item, color } : item,
+    ),
+  }
+}
+
+function resetColors() {
+  chart.value = {
+    ...chart.value,
+    points: chart.value.points.map(point => ({ ...point, color: undefined })),
+  }
+}
+
+function applyPointColors(model) {
+  if (!supportsPointColors(model.type)) return
+  const current = chart.value
+  const keepColors =
+    current?.type === model.type &&
+    current.settings.x === model.settings.x &&
+    current.settings.y === model.settings.y
+  model.points = model.points.map((point, index) => ({
+    ...point,
+    colorIndex: index,
+    color: keepColors ? current.points[index]?.color : undefined,
+  }))
+}
+
 const changed = computed(
   () =>
     chart.value &&
@@ -120,6 +170,7 @@ function reset() {
   settings.value = defaults()
   chart.value = null
   previous.value = null
+  colorEditing.value = false
   error.value = ''
 }
 
@@ -175,6 +226,7 @@ async function apply(next = settings.value) {
       }
       if (request.signal.aborted) return
     }
+    applyPointColors(model)
     previous.value = chart.value
     chart.value = model
     settings.value = { ...model.settings }
@@ -434,16 +486,45 @@ defineExpose({ useSelection, focusConfiguration })
 
       <div class="d-flex flex-wrap align-center ga-2 my-2">
         <h3 class="text-subtitle-1 font-weight-medium mr-auto">Chart data</h3>
+        <v-btn
+          v-if="editableColors"
+          variant="outlined"
+          prepend-icon="mdi-palette-outline"
+          :aria-pressed="colorEditing"
+          @click="colorEditing = !colorEditing"
+        >
+          {{ colorEditing ? 'Done editing colors' : 'Edit colors' }}
+        </v-btn>
+        <v-btn
+          v-if="editableColors && colorEditing && canResetColors"
+          variant="text"
+          @click="resetColors"
+        >
+          Reset colors
+        </v-btn>
         <v-btn variant="outlined" @click="exportPoints"
           >Download chart data CSV</v-btn
         >
       </div>
       <v-data-table
-        :headers="columns"
+        :headers="tableColumns"
         :items="chart.points"
         :items-per-page="10"
         density="compact"
       >
+        <template #[`item.color`]="{ item }">
+          <input
+            class="color-picker"
+            type="color"
+            :value="swatch(item)"
+            :aria-label="
+              chart.type === 'scatter'
+                ? `Color for point ${item.colorIndex + 1}`
+                : `Color for ${item.x}`
+            "
+            @change="editPointColor(item, $event)"
+          />
+        </template>
         <template v-for="column in columns" #[`item.${column.key}`]="{ value }">
           {{ display(value) }}
         </template>
@@ -453,6 +534,12 @@ defineExpose({ useSelection, focusConfiguration })
 </template>
 
 <style scoped>
+.color-picker {
+  display: block;
+  width: 2.5rem;
+  height: 2rem;
+  cursor: pointer;
+}
 .config-grid,
 .axis-grid {
   display: grid;

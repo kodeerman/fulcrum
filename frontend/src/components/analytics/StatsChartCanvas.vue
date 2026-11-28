@@ -2,6 +2,11 @@
 import { onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import { extent as valueExtent } from 'd3'
 import { useTheme } from 'vuetify'
+import {
+  paletteSize,
+  pointColor,
+  supportsPointColors,
+} from '@/utility/pointColors'
 import { chartAppearance, downloadChart } from '@/utility/chartAppearance'
 import {
   BarController,
@@ -37,15 +42,6 @@ const canvas = ref(null)
 const theme = useTheme()
 let chart
 
-const palette = [
-  '#2379bd',
-  '#7857bd',
-  '#148575',
-  '#aa4e22',
-  '#a33265',
-  '#476683',
-]
-
 function createChart(target, dark, responsive = true) {
   const appearance = chartAppearance(dark)
   const lineColor = dark ? '#ffaa82' : '#ae4a24'
@@ -65,16 +61,11 @@ function createChart(target, dark, responsive = true) {
   const histogram = type === 'histogram'
   const fitX = regression ? valueExtent(points, point => point.x) : []
   const groupLegend =
-    !numericX &&
-    !histogram &&
-    points.length > 1 &&
-    points.length <= palette.length
-  const colorsForTheme = dark
-    ? ['#71b7ee', '#bda3fa', '#56c6b3', '#ffab80', '#f68ab5', '#a9c8df']
-    : palette
-  const colors = groupLegend
-    ? colorsForTheme.slice(0, points.length)
-    : colorsForTheme[0]
+    !numericX && !histogram && points.length > 1 && points.length <= paletteSize
+  const baseColor = pointColor(props.model, 0, dark)
+  const colors = supportsPointColors(type)
+    ? points.map((_, index) => pointColor(props.model, index, dark))
+    : baseColor
   const data = numericX
     ? points.map(({ x, y }) => ({ x, y }))
     : points.map(point => (box ? [point.q1, point.q3] : point.y))
@@ -99,7 +90,7 @@ function createChart(target, dark, responsive = true) {
           label: box ? 'Interquartile range' : yLabel,
           data,
           backgroundColor: colors,
-          borderColor: colorsForTheme[0],
+          borderColor: colors,
           maxBarThickness: histogram ? undefined : 68,
           categoryPercentage: histogram ? 1 : undefined,
           barPercentage: histogram ? 1 : undefined,
