@@ -1,5 +1,12 @@
 <script setup>
-import { computed, nextTick, ref, shallowRef, watch } from 'vue'
+import {
+  computed,
+  nextTick,
+  onBeforeUnmount,
+  ref,
+  shallowRef,
+  watch,
+} from 'vue'
 import StatsChartCanvas from './StatsChartCanvas.vue'
 import { aggregations, buildChart, chartTypes } from '@/utility/statsChart'
 
@@ -15,6 +22,8 @@ const configuration = ref(null)
 const chart = shallowRef(null)
 const previous = shallowRef(null)
 const error = ref('')
+const fitting = ref(false)
+let regressionRequest
 const settings = ref({})
 const number = new Intl.NumberFormat(undefined, { maximumSignificantDigits: 8 })
 
@@ -35,7 +44,9 @@ const xFields = computed(() =>
 const previewTitle = computed(() => {
   const { title, y, x, aggregation } = settings.value
   const outcome = props.dataset.fields[y]?.title
-  if (!outcome) return 'Choose a Y field'
+  if (!outcome) return 'Choose a numeric field'
+  if (settings.value.type === 'histogram')
+    return title.trim() || `Distribution of ${outcome}`
   const yLabel = showAggregation.value
     ? `${aggregations[aggregation]} of ${outcome}`
     : outcome
@@ -48,6 +59,12 @@ const previewTitle = computed(() => {
 })
 const columns = computed(() => {
   if (!chart.value) return []
+  if (chart.value.type === 'histogram')
+    return [
+      { key: 'low', title: 'Bin start' },
+      { key: 'high', title: 'Bin end' },
+      { key: 'y', title: 'Frequency' },
+    ]
   return [
     { key: 'x', title: chart.value.xLabel },
     ...(chart.value.type === 'box'
@@ -59,6 +76,7 @@ const columns = computed(() => {
           { key: 'max', title: 'Maximum' },
         ]
       : [{ key: 'y', title: chart.value.yLabel }]),
+    ...(chart.value.regression ? [{ key: 'fitted', title: 'Fitted Y' }] : []),
     ...(chart.value.errorBars ? [{ key: 'std', title: 'Sample SD' }] : []),
     { key: 'count', title: 'Rows' },
   ]
@@ -90,10 +108,15 @@ function defaults() {
     axes: true,
     legend: true,
     errorBars: false,
+    regression: false,
+    bins: 10,
   }
 }
 
 function reset() {
+  regressionRequest?.abort()
+  regressionRequest = undefined
+  fitting.value = false
   settings.value = defaults()
   chart.value = null
   previous.value = null
@@ -101,16 +124,57 @@ function reset() {
 }
 
 watch(() => props.dataset, reset, { immediate: true })
+onBeforeUnmount(() => regressionRequest?.abort())
 watch(xFields, fields => {
   if (!fields.some(field => field.index === settings.value.x)) {
     settings.value.x = numericX.value ? (fields[0]?.index ?? null) : null
   }
 })
 
-function apply(next = settings.value) {
+async function fitRegression(points, signal) {
+  const response = await fetch('/api/stats/regression', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ pairs: points.map(({ x, y }) => [x, y]) }),
+    signal,
+  })
+  if (!response.headers.get('content-type')?.includes('application/json'))
+    throw new Error('The regression service is unavailable.')
+  const data = await response.json()
+  if (!response.ok)
+    throw new Error(data.error || 'The regression could not be calculated.')
+  return data
+}
+
+async function apply(next = settings.value) {
+  if (fitting.value) return
   error.value = ''
   try {
     const model = buildChart(props.dataset, next)
+    if (model.type === 'scatter' && next.regression) {
+      const request = new AbortController()
+      regressionRequest = request
+      fitting.value = true
+      try {
+        const fit = await fitRegression(model.points, request.signal)
+        const points = model.points.map(point => ({
+          ...point,
+          fitted: fit.intercept + fit.slope * point.x,
+        }))
+        if (points.some(point => !Number.isFinite(point.fitted)))
+          throw new Error('The fitted values are too large to chart.')
+        model.points = points
+        model.regression = fit
+      } catch (err) {
+        if (!request.signal.aborted) error.value = err.message
+      } finally {
+        if (regressionRequest === request) {
+          regressionRequest = undefined
+          fitting.value = false
+        }
+      }
+      if (request.signal.aborted) return
+    }
     previous.value = chart.value
     chart.value = model
     settings.value = { ...model.settings }
@@ -169,7 +233,7 @@ defineExpose({ useSelection, focusConfiguration })
       </h2>
       <form @submit.prevent="apply()">
         <div class="config-grid">
-          <div class="controls">
+          <fieldset class="controls" :disabled="fitting">
             <label>
               Chart type
               <select v-model="settings.type">
@@ -183,7 +247,7 @@ defineExpose({ useSelection, focusConfiguration })
               </select>
             </label>
             <div class="axis-grid">
-              <label>
+              <label v-if="settings.type !== 'histogram'">
                 X field
                 <select v-model="settings.x">
                   <option :value="null">
@@ -199,7 +263,9 @@ defineExpose({ useSelection, focusConfiguration })
                 </select>
               </label>
               <label>
-                Y field
+                {{
+                  settings.type === 'histogram' ? 'Numeric field' : 'Y field'
+                }}
                 <select v-model="settings.y">
                   <option
                     v-for="field in numeric"
@@ -211,6 +277,16 @@ defineExpose({ useSelection, focusConfiguration })
                 </select>
               </label>
             </div>
+            <label v-if="settings.type === 'histogram'">
+              Number of bins
+              <input
+                v-model.number="settings.bins"
+                type="number"
+                min="1"
+                max="50"
+                required
+              />
+            </label>
             <label v-if="showAggregation">
               Aggregation
               <select v-model="settings.aggregation">
@@ -236,6 +312,10 @@ defineExpose({ useSelection, focusConfiguration })
                 ><input v-model="settings.legend" type="checkbox" />
                 Legend</label
               >
+              <label v-if="settings.type === 'scatter'" class="toggle">
+                <input v-model="settings.regression" type="checkbox" /> Show
+                linear regression
+              </label>
               <label
                 v-if="
                   settings.type === 'bar' && settings.aggregation === 'mean'
@@ -246,7 +326,7 @@ defineExpose({ useSelection, focusConfiguration })
                 bars (±1 sample SD)
               </label>
             </div>
-          </div>
+          </fieldset>
           <aside class="settings-preview">
             <h3 class="text-subtitle-1 font-weight-medium">Preview settings</h3>
             <p class="text-body-2 mt-2">
@@ -260,6 +340,13 @@ defineExpose({ useSelection, focusConfiguration })
             <p v-else-if="settings.type === 'scatter'" class="text-body-2 mt-2">
               Each usable row contributes one X–Y pair.
             </p>
+            <p
+              v-else-if="settings.type === 'histogram'"
+              class="text-body-2 mt-2"
+            >
+              Bars count values in equal-width bins. The last bin includes its
+              upper edge.
+            </p>
             <p v-else-if="settings.type === 'line'" class="text-body-2 mt-2">
               Repeated X values are aggregated. Points connect in ascending X
               order.
@@ -268,8 +355,8 @@ defineExpose({ useSelection, focusConfiguration })
               Each bar aggregates usable Y values for one X category.
             </p>
             <p v-if="numericX && xFields.length === 0" class="text-body-2 mt-2">
-              Choose a bar chart or box plot for a dataset with only one numeric
-              field.
+              Choose a histogram, bar chart, or box plot for a dataset with only
+              one numeric field.
             </p>
           </aside>
         </div>
@@ -278,6 +365,7 @@ defineExpose({ useSelection, focusConfiguration })
           <v-btn variant="text" @click="reset">Reset chart</v-btn>
           <v-btn
             type="submit"
+            :loading="fitting"
             color="primary"
             :disabled="settings.y === null || (numericX && settings.x === null)"
             >Generate chart</v-btn
@@ -290,7 +378,7 @@ defineExpose({ useSelection, focusConfiguration })
       <div class="d-flex flex-wrap align-center ga-2 mb-2">
         <h2 class="text-h6 mr-auto">{{ chart.title }}</h2>
         <v-btn variant="text" @click="focusConfiguration">Edit chart</v-btn>
-        <v-btn variant="text" :disabled="!previous" @click="undo"
+        <v-btn variant="text" :disabled="fitting || !previous" @click="undo"
           >Undo last chart change</v-btn
         >
         <v-btn variant="outlined" @click="plot.download()"
@@ -304,6 +392,46 @@ defineExpose({ useSelection, focusConfiguration })
         Generate the chart to apply your current settings.
       </p>
       <StatsChartCanvas ref="plot" :model="chart" />
+      <section
+        v-if="chart.regression"
+        class="mt-3 mb-5"
+        aria-label="Linear regression"
+      >
+        <h3 class="text-subtitle-1 font-weight-medium">Linear regression</h3>
+        <v-table density="compact">
+          <tbody>
+            <tr>
+              <th scope="row">Slope</th>
+              <td>{{ display(chart.regression.slope) }}</td>
+            </tr>
+            <tr>
+              <th scope="row">Intercept</th>
+              <td>{{ display(chart.regression.intercept) }}</td>
+            </tr>
+            <tr>
+              <th scope="row">R²</th>
+              <td>{{ display(chart.regression.r_squared) }}</td>
+            </tr>
+            <tr>
+              <th scope="row">Pearson r</th>
+              <td>{{ display(chart.regression.r) }}</td>
+            </tr>
+            <tr>
+              <th scope="row">Slope p-value (two-sided)</th>
+              <td>{{ display(chart.regression.p_value) }}</td>
+            </tr>
+            <tr>
+              <th scope="row">Usable pairs</th>
+              <td>{{ display(chart.regression.n) }}</td>
+            </tr>
+          </tbody>
+        </v-table>
+        <p class="text-body-2 mt-2">
+          Interpret the p-value only when the observations are independent and
+          the regression assumptions are reasonable.
+        </p>
+      </section>
+
       <div class="d-flex flex-wrap align-center ga-2 my-2">
         <h3 class="text-subtitle-1 font-weight-medium mr-auto">Chart data</h3>
         <v-btn variant="outlined" @click="exportPoints"
@@ -337,6 +465,8 @@ defineExpose({ useSelection, focusConfiguration })
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 .controls {
+  min-width: 0;
+  border: 0;
   display: grid;
   gap: 0.875rem;
 }
@@ -346,7 +476,8 @@ label {
   font-size: 0.875rem;
 }
 select,
-input[type='text'] {
+input[type='text'],
+input[type='number'] {
   width: 100%;
   border: 1px solid rgba(var(--v-theme-on-surface), 0.42);
   min-height: 2.75rem;

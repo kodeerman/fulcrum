@@ -1,5 +1,6 @@
 <script setup>
 import { onMounted, onBeforeUnmount, ref, watch } from 'vue'
+import { extent as valueExtent } from 'd3'
 import {
   BarController,
   BarElement,
@@ -45,11 +46,25 @@ const palette = [
 function render() {
   chart?.destroy()
 
-  const { type, title, points, numericX, errorBars, xLabel, yLabel, settings } =
-    props.model
+  const {
+    type,
+    title,
+    points,
+    numericX,
+    errorBars,
+    xLabel,
+    yLabel,
+    settings,
+    regression,
+  } = props.model
   const box = type === 'box'
+  const histogram = type === 'histogram'
+  const fitX = regression ? valueExtent(points, point => point.x) : []
   const groupLegend =
-    !numericX && points.length > 1 && points.length <= palette.length
+    !numericX &&
+    !histogram &&
+    points.length > 1 &&
+    points.length <= palette.length
   const colors = groupLegend ? palette.slice(0, points.length) : palette[0]
   const data = numericX
     ? points.map(({ x, y }) => ({ x, y }))
@@ -67,7 +82,7 @@ function render() {
   const max = Math.max(...extent.map(([, high]) => high))
 
   chart = new Chart(canvas.value, {
-    type: box ? 'bar' : type,
+    type: box || histogram ? 'bar' : type,
     data: {
       labels: numericX ? undefined : points.map(point => point.x),
       datasets: [
@@ -76,9 +91,27 @@ function render() {
           data,
           backgroundColor: colors,
           borderColor: palette[0],
-          maxBarThickness: 68,
+          maxBarThickness: histogram ? undefined : 68,
+          categoryPercentage: histogram ? 1 : undefined,
+          barPercentage: histogram ? 1 : undefined,
+          borderWidth: histogram ? 1 : undefined,
           pointRadius: points.length > 1000 ? (type === 'line' ? 0 : 2) : 4,
         },
+        ...(regression
+          ? [
+              {
+                type: 'line',
+                label: 'Linear regression',
+                data: fitX.map(x => ({
+                  x,
+                  y: regression.intercept + regression.slope * x,
+                })),
+                borderColor: '#ae4a24',
+                borderWidth: 2,
+                pointRadius: 0,
+              },
+            ]
+          : []),
       ],
     },
     options: {
@@ -90,7 +123,7 @@ function render() {
           title: { display: settings.axes, text: xLabel },
         },
         y: {
-          beginAtZero: type === 'bar',
+          beginAtZero: type === 'bar' || histogram,
           suggestedMin: Number.isFinite(min) ? min : undefined,
           suggestedMax: Number.isFinite(max) ? max : undefined,
           title: { display: settings.axes, text: yLabel },
@@ -114,7 +147,10 @@ function render() {
         },
         tooltip: {
           callbacks: {
-            label: ({ dataIndex, formattedValue }) => {
+            label: ({ datasetIndex, dataIndex, formattedValue }) => {
+              if (datasetIndex === 1)
+                return `Linear regression: ${formattedValue}`
+              if (histogram) return `Frequency: ${formattedValue}`
               const point = points[dataIndex]
               return box
                 ? [

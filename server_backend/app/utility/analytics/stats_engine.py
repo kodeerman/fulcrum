@@ -90,11 +90,16 @@ def _finite(value):
     return float(value) if isfinite(value) else None
 
 
-def _t_result(result):
+def _t_result(result, difference):
+    statistic = _finite(result.statistic)
+    interval = result.confidence_interval() if statistic is not None else None
     return {
-        "t_stat": _finite(result.statistic),
-        "p_value": _finite(result.pvalue) if isfinite(result.statistic) else None,
+        "t_stat": statistic,
+        "p_value": _finite(result.pvalue) if statistic is not None else None,
         "df": _finite(result.df),
+        "mean_difference": _finite(difference),
+        "ci_low": _finite(interval.low) if interval else None,
+        "ci_high": _finite(interval.high) if interval else None,
     }
 
 
@@ -103,22 +108,38 @@ def one_sample_ttest(values, popmean):
 
     if not isfinite(popmean):
         raise ValueError("The reference mean must be finite.")
-    return _t_result(stats.ttest_1samp(_sample(values), popmean))
+    sample = _sample(values)
+    return _t_result(stats.ttest_1samp(sample, popmean), mean(sample) - popmean)
 
 
 def independent_ttest(a, b, equal_var=False):
     from scipy import stats
 
     a, b = _sample(a), _sample(b)
+    difference = mean(a) - mean(b)
     if min(a) == max(a) and min(b) == max(b):
-        return {"t_stat": None, "p_value": None, "df": None}
-    return _t_result(stats.ttest_ind(a, b, equal_var=equal_var))
+        return {
+            "t_stat": None,
+            "p_value": None,
+            "df": None,
+            "mean_difference": _finite(difference),
+            "ci_low": None,
+            "ci_high": None,
+        }
+    return _t_result(stats.ttest_ind(a, b, equal_var=equal_var), difference)
 
 
 def paired_ttest(a, b):
     from scipy import stats
 
-    return _t_result(stats.ttest_rel(*_pairs(a, b, 2)))
+    a, b = _pairs(a, b, 2)
+    differences = [first - second for first, second in zip(a, b)]
+    if not all(map(isfinite, differences)):
+        raise ValueError("The differences are too large to compare.")
+    return {
+        **_t_result(stats.ttest_rel(a, b), mean(differences)),
+        "pairs": len(differences),
+    }
 
 
 def one_way_anova(*groups):

@@ -1,6 +1,7 @@
 <script setup>
 import { computed, nextTick, onMounted, ref, shallowRef, watch } from 'vue'
 import Papa from 'papaparse'
+import { mean } from 'd3'
 import { useRoute, useRouter } from 'vue-router'
 import { auth } from '@/stores/auth'
 import StatsChartBuilder from '@/components/analytics/StatsChartBuilder.vue'
@@ -35,6 +36,8 @@ const dataset = shallowRef(null)
 const outcome = ref(null)
 const group = ref(null)
 const test = ref(null)
+const pairFirst = ref(null)
+const pairSecond = ref(null)
 const result = ref(null)
 const error = ref('')
 const pending = ref(false)
@@ -58,6 +61,9 @@ const measures = [
 ]
 const comparisonMeasures = [
   ['mean_difference', 'Mean difference (first − second)'],
+  ['ci_low', '95% CI lower bound'],
+  ['ci_high', '95% CI upper bound'],
+  ['pairs', 'Complete participant pairs'],
   ['t_stat', 't statistic'],
   ['f_stat', 'F statistic'],
   ['df', 'Degrees of freedom'],
@@ -118,13 +124,14 @@ const groupingFields = computed(
 )
 const analysis = computed(() => {
   const samples = new Map()
+  const participantGroups = new Map()
   let skipped = 0
   let repeatedParticipants = false
   const participants = new Set()
   if (!dataset.value || outcome.value === null)
-    return { samples, skipped, repeatedParticipants }
-  const participantIndex = dataset.value.fields.findIndex(
-    field => field.title === 'Participant code',
+    return { samples, skipped, repeatedParticipants, participantGroups }
+  const participantIndex = dataset.value.fields.findIndex(field =>
+    ['participant code', 'participant id'].includes(field.title.toLowerCase()),
   )
   for (const row of dataset.value.rows) {
     const value = numericCell(row[outcome.value])
@@ -138,27 +145,67 @@ const analysis = computed(() => {
       if (!participant || participants.has(participant))
         repeatedParticipants = true
       participants.add(participant)
+      if (
+        participant &&
+        group.value !== null &&
+        group.value !== participantIndex
+      ) {
+        if (!participantGroups.has(label))
+          participantGroups.set(label, new Map())
+        const byParticipant = participantGroups.get(label)
+        if (!byParticipant.has(participant)) byParticipant.set(participant, [])
+        byParticipant.get(participant).push(value)
+      }
     }
     if (!samples.has(label)) samples.set(label, [])
     samples.get(label).push(value)
   }
-  return { samples, skipped, repeatedParticipants }
+  return { samples, skipped, repeatedParticipants, participantGroups }
+})
+const pairGroups = computed(() => [...analysis.value.participantGroups.keys()])
+const paired = computed(() => {
+  const first = analysis.value.participantGroups.get(pairFirst.value)
+  const second = analysis.value.participantGroups.get(pairSecond.value)
+  if (!first || !second || first === second) return { pairs: [], unmatched: 0 }
+
+  const pairs = [...first].flatMap(([participant, values]) => {
+    const other = second.get(participant)
+    return other ? [[mean(values), mean(other)]] : []
+  })
+  return { pairs, unmatched: first.size + second.size - 2 * pairs.length }
 })
 const tests = computed(() => {
-  if (analysis.value.repeatedParticipants) return []
+  const options = []
   const samples = [...analysis.value.samples.values()]
-  if (samples.length < 2 || samples.some(sample => sample.length < 2)) return []
-  const options = [{ title: 'One-way ANOVA', value: 'anova' }]
-  if (samples.length === 2)
-    options.unshift({ title: 'Welch’s t-test', value: 'welch' })
+  if (
+    !analysis.value.repeatedParticipants &&
+    samples.length >= 2 &&
+    samples.every(sample => sample.length >= 2)
+  ) {
+    if (samples.length === 2)
+      options.push({ title: 'Welch’s t-test (two-sided)', value: 'welch' })
+    options.push({ title: 'One-way ANOVA', value: 'anova' })
+  }
+  if (pairGroups.value.length >= 2)
+    options.push({ title: 'Paired t-test (two-sided)', value: 'paired' })
   return options
+})
+
+watch(test, choice => {
+  if (choice === 'paired')
+    [pairFirst.value, pairSecond.value] = pairGroups.value.slice(0, 2)
+})
+
+watch(pairFirst, first => {
+  if (first === pairSecond.value)
+    pairSecond.value = pairGroups.value.find(group => group !== first) ?? null
 })
 
 watch([outcome, group], () => {
   if (outcome.value === group.value) group.value = null
   test.value = null
 })
-watch([values, outcome, group, test], () => {
+watch([values, outcome, group, test, pairFirst, pairSecond], () => {
   result.value = null
   error.value = ''
 })
@@ -370,9 +417,17 @@ async function calculate() {
       'Choose fields that yield between 1 and 500 groups with usable values.'
     return
   }
+  if (test.value === 'paired' && paired.value.pairs.length < 2) {
+    error.value = 'Choose conditions with at least two participants in both.'
+    return
+  }
   const payload = manual
     ? { values: values.value }
-    : { samples: [...samples.values()], test: test.value }
+    : {
+        samples: [...samples.values()],
+        test: test.value,
+        ...(test.value === 'paired' ? { pairs: paired.value.pairs } : {}),
+      }
   pending.value = true
   try {
     const response = await fetch('/api/stats/describe', {
@@ -396,6 +451,10 @@ async function calculate() {
       labels: manual ? ['All values'] : [...samples.keys()],
       summaries: manual ? [data] : data.summaries,
       comparison: data.comparison,
+      comparisonLabels:
+        test.value === 'paired'
+          ? [pairFirst.value, pairSecond.value]
+          : [...samples.keys()],
       test: tests.value.find(option => option.value === test.value)?.title,
       skipped: manual ? 0 : skipped,
     }
@@ -440,6 +499,7 @@ function exportStats() {
     labels,
     summaries,
     comparison,
+    comparisonLabels,
     test,
   } = result.value
   const columns = comparisonMeasures.filter(
@@ -473,7 +533,7 @@ function exportStats() {
       outcome,
       grouping,
       skipped,
-      labels.join(' vs '),
+      comparisonLabels.join(' vs '),
       ...measures.map(() => ''),
       test,
       ...columns.map(([key]) => comparison[key]),
@@ -796,7 +856,39 @@ function exportStats() {
           Comparison tests require at least two groups with at least two values
           each.
         </p>
-        <p v-if="test" class="text-body-2 mb-2">
+        <template v-if="test === 'paired'">
+          <div class="settings-grid">
+            <label class="settings-field">
+              First condition
+              <select v-model="pairFirst" :disabled="pending">
+                <option v-for="label in pairGroups" :key="label">
+                  {{ label }}
+                </option>
+              </select>
+            </label>
+            <label class="settings-field">
+              Second condition
+              <select v-model="pairSecond" :disabled="pending">
+                <option
+                  v-for="label in pairGroups.filter(
+                    label => label !== pairFirst,
+                  )"
+                  :key="label"
+                >
+                  {{ label }}
+                </option>
+              </select>
+            </label>
+          </div>
+          <p class="text-body-2 mb-2">
+            {{ paired.pairs.length }} complete pairs ·
+            {{ paired.unmatched }} unpaired participants. Repeated trials are
+            averaged within each participant and condition. The test requires at
+            least two complete pairs and assumes the paired differences are
+            approximately normal.
+          </p>
+        </template>
+        <p v-else-if="test" class="text-body-2 mb-2">
           Use independent observations and check that the outcome is
           approximately normal within each group.
           {{
@@ -810,7 +902,10 @@ function exportStats() {
             color="primary"
             type="submit"
             :loading="pending"
-            :disabled="!analysis.samples.size"
+            :disabled="
+              !analysis.samples.size ||
+              (test === 'paired' && paired.pairs.length < 2)
+            "
           >
             Calculate
           </v-btn>
@@ -869,6 +964,9 @@ function exportStats() {
       </v-table>
       <v-card v-if="result.comparison" variant="outlined" class="pa-5 mt-5">
         <h3 class="text-h6 mb-2">{{ result.test }}</h3>
+        <p class="text-body-2 mb-2">
+          {{ result.comparisonLabels.join(' vs ') }}
+        </p>
         <v-table density="compact">
           <tbody>
             <template v-for="[key, label] in comparisonMeasures" :key="key">

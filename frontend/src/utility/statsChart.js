@@ -1,4 +1,12 @@
-import { deviation, mean, median, quantileSorted, sum } from 'd3'
+import {
+  bisectRight,
+  deviation,
+  extent,
+  mean,
+  median,
+  quantileSorted,
+  sum,
+} from 'd3'
 
 export const numericCell = cell => {
   const decimal = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i
@@ -12,6 +20,7 @@ export const chartTypes = {
   line: 'Line chart',
   scatter: 'Scatter plot',
   box: 'Box plot',
+  histogram: 'Histogram',
 }
 
 export const aggregations = {
@@ -22,11 +31,61 @@ export const aggregations = {
 }
 const aggregate = { mean, median, sum, count: values => values.length }
 
+function buildHistogram(dataset, settings) {
+  const values = dataset.rows
+    .map(row => numericCell(row[settings.y]))
+    .filter(value => value !== null)
+  if (!values.length)
+    throw new Error('No rows have usable values for the selected field.')
+  const [min, max] = extent(values)
+  const binCount = max === min ? 1 : settings.bins
+  if (!Number.isInteger(binCount) || binCount < 1 || binCount > 50)
+    throw new Error('Choose between 1 and 50 bins.')
+  const width = (max - min) / binCount
+  if (!Number.isFinite(width) || (max !== min && width <= 0))
+    throw new Error('The value range is too large or too small to bin.')
+  const edges = Array.from(
+    { length: binCount },
+    (_, index) => min + index * width,
+  )
+  edges.push(max)
+  if (
+    max !== min &&
+    edges.some((edge, index) => index > 0 && edge <= edges[index - 1])
+  )
+    throw new Error('Choose fewer bins for this tightly spaced dataset.')
+
+  const format = new Intl.NumberFormat(undefined, {
+    maximumSignificantDigits: 8,
+  })
+  const points = edges.slice(0, -1).map((low, index) => ({
+    x: `${format.format(low)}–${format.format(edges[index + 1])}`,
+    low,
+    high: edges[index + 1],
+    y: 0,
+  }))
+  for (const value of values) {
+    const index = Math.min(binCount - 1, bisectRight(edges, value) - 1)
+    points[index].y++
+  }
+  const xLabel = dataset.fields[settings.y].title
+  return {
+    settings: { ...settings },
+    type: 'histogram',
+    points,
+    excluded: dataset.rows.length - values.length,
+    xLabel,
+    yLabel: 'Frequency',
+    title: settings.title.trim() || `Distribution of ${xLabel}`,
+  }
+}
+
 export function buildChart(dataset, settings) {
   const { type, x, y, aggregation } = settings
   if (y === null || (x === null && ['line', 'scatter'].includes(type))) {
     throw new Error('Choose the fields required for this chart.')
   }
+  if (type === 'histogram') return buildHistogram(dataset, settings)
   const numericX = type === 'line' || type === 'scatter'
   const errorBars =
     type === 'bar' && aggregation === 'mean' && settings.errorBars
