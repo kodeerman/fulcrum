@@ -107,12 +107,17 @@ router.beforeEach(async (to, from, next) => {
   if (!publicPages.includes(to.name)) {
     try {
       await pingServer()
-    } catch (err) {
+    } catch {
       // Silently fail: no redirect, no block.
     }
   }
 
   next()
+})
+
+// Restore the sidebar on a direct visit without delaying the public Stats Engine.
+router.afterEach((to, from, failure) => {
+  if (!failure && to.name === 'StatsEngine' && !from.name) void pingServer()
 })
 
 export default router

@@ -37,6 +37,9 @@ docker compose up --build
 When the stack is healthy:
 
 - Frontend: <http://localhost/>
+- Stats Engine: <http://localhost/stats>. Open it from the sign-in page header
+  or the sidebar after signing in. In Data Analytics, select a study and choose
+  **Analyze study data** to use its loaded participant rows.
 - Backend health check: <http://localhost/api/ping>
 
 To wipe the database and reseed from scratch:

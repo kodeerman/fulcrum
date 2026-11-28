@@ -2,8 +2,9 @@
   <v-container fluid>
     <!-- Study selector row -->
     <v-row>
-      <v-col cols="12">
+      <v-col cols="12" class="d-flex flex-wrap align-center ga-3">
         <StudySelector @study-selected="onStudySelected" />
+        <v-btn :to="{ name: 'StatsEngine' }" variant="outlined">Stats Engine</v-btn>
       </v-col>
     </v-row>
 
@@ -48,6 +49,18 @@
 
     <!-- Analytics dashboard content -->
     <template v-else>
+      <div class="mb-4">
+        <v-btn variant="outlined" :aria-expanded="showStats" @click="showStats = !showStats">
+          {{ showStats ? 'Close study analysis' : 'Analyze study data' }}
+        </v-btn>
+      </div>
+      <StatsEngine
+        v-if="showStats"
+        :key="selectedStudy"
+        :study-label="`Study ${selectedStudy} participants`"
+        :study-rows="participantData"
+      />
+
       <!-- Summary cards with DashboardSummaryCard and CustomFormulaInput in the same row -->
       <div class="chart-cards-container">
         <v-row>
@@ -194,7 +207,7 @@
 </template>
 
 <script>
-import { ref, computed } from 'vue'
+import { ref, computed, defineAsyncComponent } from 'vue'
 import { useAnalyticsStore } from '@/stores/analyticsStore'
 import analyticsApi from '@/api/analyticsApi'
 
@@ -207,9 +220,12 @@ import ParticipantTable from '@/components/analytics/ParticipantTable.vue'
 import ParticipantBubbleChart from '@/components/analytics/ParticipantBubbleChart.vue'
 import CustomFormulaInput from '@/components/analytics/CustomFormulaInput.vue'
 
+const StatsEngine = defineAsyncComponent(() => import('@/views/StatsEngine.vue'))
+
 export default {
   components: {
     StudySelector,
+    StatsEngine,
     DashboardSummaryCard,
     LearningCurveChart,
     TaskPerformanceComparison,
@@ -221,6 +237,7 @@ export default {
   setup() {
     const analyticsStore = useAnalyticsStore()
     const selectedStudy = ref(null)
+    const showStats = ref(false)
     const loading = ref(false)
     const error = ref(false)
     const errorMessage = ref('')
@@ -384,6 +401,7 @@ export default {
     return {
       analyticsStore,
       selectedStudy,
+      showStats,
       loading,
       error,
       errorMessage,

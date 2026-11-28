@@ -1,6 +1,3 @@
-#stats_engine.py: should be used to make calculations for mean, median, mode, range, SD, t-test or ANOVA, linregress for line of best fit
-#Shapiro-Wilk, and a normal-curve fit.
-
 from collections import Counter
 from math import isfinite, isnan, sqrt
 from statistics import mean, median, quantiles, variance
@@ -68,28 +65,136 @@ def mode(values):
     """Return the sorted modes of one numeric sample."""
     return _modes(_numeric_values(values))
 
-def one_sample_ttest(DATA, mu): #needs pval, degrees of freedom (df), and t_stat
-    pass
 
-#the following values should have equal_var be default true if no value is provided, see how python does this.
-def independent_ttest(DATA1, DATA2, equal_var):
-    equal_var = True #for testing purposes, we will assume equal variance. This can be changed later if needed.
-    pass
-
-def paired_ttest(DATA1, DATA2): #needs pval, t_stat, df, and confidence interval
-    pass
-
-def one_way_anova(DATA1, DATA2, DATA3): #needs pval, f_stat, df_between, df_within
-    pass
-
-def linear_fit(DATA1, DATA2): #needs slope, intercept, r_value, p_value, std_err, r squared, and n from describe (use callbacks!)
-    pass
-
-def normality_test(DATA): #Shapiro-Wilk test, needs pval and W statistic
-    pass
-
-def histogram(DATA): #needs edges, counts, and density
-    pass
+def _sample(values, minimum=2):
+    numbers = _numeric_values(values)
+    if len(numbers) < minimum:
+        raise ValueError(f"At least {minimum} numeric values are required per sample.")
+    return numbers
 
 
+def _pairs(a, b, minimum):
+    if len(a) != len(b):
+        raise ValueError("Paired inputs must have the same length.")
+    pairs = [
+        (x, y) for x, y in zip(a, b)
+        if x is not None and y is not None and not isnan(float(x)) and not isnan(float(y))
+    ]
+    if len(pairs) < minimum:
+        raise ValueError(f"At least {minimum} complete pairs are required.")
+    x, y = zip(*pairs)
+    return _numeric_values(x), _numeric_values(y)
 
+
+def _finite(value):
+    return float(value) if isfinite(value) else None
+
+
+def _t_result(result):
+    return {
+        "t_stat": _finite(result.statistic),
+        "p_value": _finite(result.pvalue) if isfinite(result.statistic) else None,
+        "df": _finite(result.df),
+    }
+
+
+def one_sample_ttest(values, popmean):
+    from scipy import stats
+
+    if not isfinite(popmean):
+        raise ValueError("The reference mean must be finite.")
+    return _t_result(stats.ttest_1samp(_sample(values), popmean))
+
+
+def independent_ttest(a, b, equal_var=False):
+    from scipy import stats
+
+    a, b = _sample(a), _sample(b)
+    if min(a) == max(a) and min(b) == max(b):
+        return {"t_stat": None, "p_value": None, "df": None}
+    return _t_result(stats.ttest_ind(a, b, equal_var=equal_var))
+
+
+def paired_ttest(a, b):
+    from scipy import stats
+
+    return _t_result(stats.ttest_rel(*_pairs(a, b, 2)))
+
+
+def one_way_anova(*groups):
+    from scipy import stats
+
+    if len(groups) < 2:
+        raise ValueError("At least two groups are required.")
+    samples = [_sample(group) for group in groups]
+    result = stats.f_oneway(*samples)
+    return {
+        "f_stat": _finite(result.statistic),
+        "p_value": _finite(result.pvalue) if isfinite(result.statistic) else None,
+        "df_between": len(samples) - 1,
+        "df_within": sum(map(len, samples)) - len(samples),
+    }
+
+
+def linear_fit(x, y):
+    from scipy import stats
+
+    x, y = _pairs(x, y, 3)
+    if min(x) == max(x):
+        raise ValueError("The predictor needs nonzero variance.")
+    result = stats.linregress(x, y)
+    return {
+        "slope": _finite(result.slope),
+        "intercept": _finite(result.intercept),
+        "r": _finite(result.rvalue),
+        "r_squared": _finite(result.rvalue ** 2),
+        "p_value": _finite(result.pvalue),
+        "std_err": _finite(result.stderr),
+        "n": len(x),
+    }
+
+
+def normality_test(values, alpha=0.05):
+    from scipy import stats
+
+    if not 0 < alpha < 1:
+        raise ValueError("Alpha must be between zero and one.")
+    sample = _sample(values, 3)
+    if min(sample) == max(sample):
+        raise ValueError("The sample needs nonzero variance.")
+    result = stats.shapiro(sample)
+    return {
+        "statistic": _finite(result.statistic),
+        "p_value": _finite(result.pvalue),
+        "is_normal": bool(result.pvalue >= alpha),
+    }
+
+
+def normal_fit(values, n_points=100):
+    import numpy as np
+    from scipy import stats
+
+    sample = _sample(values)
+    center, std = mean(sample), sqrt(variance(sample))
+    if std == 0 or n_points < 2:
+        raise ValueError("The curve requires nonzero variance and at least two points.")
+    x = np.linspace(center - 4 * std, center + 4 * std, n_points)
+    return {
+        "mean": center,
+        "std": std,
+        "x": [_finite(value) for value in x],
+        "pdf": [_finite(value) for value in stats.norm.pdf(x, loc=center, scale=std)],
+    }
+
+
+def histogram(values, bins=10):
+    import numpy as np
+
+    sample = _numeric_values(values)
+    counts, edges = np.histogram(sample, bins=bins)
+    density = counts / len(sample) / np.diff(edges)
+    return {
+        "edges": [_finite(edge) for edge in edges],
+        "counts": counts.tolist(),
+        "density": [_finite(value) for value in density],
+    }

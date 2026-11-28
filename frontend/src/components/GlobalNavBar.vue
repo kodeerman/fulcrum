@@ -23,7 +23,7 @@
         title="Data Analytics"
       ></v-list-item>
       <v-list-item
-        to="/stats"
+        :to="{ name: 'StatsEngine' }"
         prepend-icon="mdi-calculator"
         title="Stats Engine"
       ></v-list-item>

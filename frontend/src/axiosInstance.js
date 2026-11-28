@@ -22,7 +22,7 @@ api.interceptors.request.use(config => {
 api.interceptors.response.use(
   response => response,
   error => {
-    const publicRoutes = ['UserLogin', 'UserRegister', 'Confirmed', 'AboutPage']
+    const publicRoutes = ['UserLogin', 'UserRegister', 'Confirmed', 'AboutPage', 'StatsEngine']
     const currentRoute = router.currentRoute.value?.name
 
     const isAuthError =

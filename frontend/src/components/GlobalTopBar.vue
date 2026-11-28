@@ -4,6 +4,14 @@
 
     <v-spacer></v-spacer>
 
+    <v-btn
+      v-if="!auth.isAuthenticated"
+      :to="{ name: 'StatsEngine' }"
+      variant="text"
+    >
+      Stats Engine
+    </v-btn>
+
     <!-- Always show About button -->
     <v-btn icon @click="goToAbout">
       <v-icon>mdi-help-circle-outline</v-icon>
