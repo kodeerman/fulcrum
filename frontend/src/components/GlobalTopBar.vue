@@ -1,19 +1,34 @@
 <template>
   <v-app-bar color="primary">
-    <v-app-bar-title>Fulcrum</v-app-bar-title>
+    <v-app-bar-title>
+      <router-link to="/" class="fulcrum-home">Fulcrum</router-link>
+    </v-app-bar-title>
 
     <v-spacer></v-spacer>
 
-    <v-btn
-      v-if="!auth.isAuthenticated"
-      :to="{ name: 'StatsEngine' }"
-      variant="text"
-    >
-      Stats Engine
-    </v-btn>
+    <nav aria-label="Analysis engines" class="engine-links">
+      <v-btn
+        :to="{ name: 'StatsEngine' }"
+        :active="
+          $route.name === 'StatsEngine' && $route.query.engine !== 'charts'
+        "
+        variant="text"
+      >
+        Stats Engine
+      </v-btn>
+      <v-btn
+        :to="{ name: 'StatsEngine', query: { engine: 'charts' } }"
+        :active="
+          $route.name === 'StatsEngine' && $route.query.engine === 'charts'
+        "
+        variant="text"
+      >
+        Chart Engine
+      </v-btn>
+    </nav>
 
     <!-- Always show About button -->
-    <v-btn icon @click="goToAbout">
+    <v-btn icon aria-label="About Fulcrum" @click="goToAbout">
       <v-icon>mdi-help-circle-outline</v-icon>
     </v-btn>
 
@@ -162,3 +177,29 @@ export default {
   },
 }
 </script>
+
+<style scoped>
+.fulcrum-home {
+  color: inherit;
+  text-decoration: none;
+}
+
+.fulcrum-home:hover {
+  text-decoration: underline;
+}
+
+.engine-links {
+  display: flex;
+  flex-shrink: 0;
+}
+
+@media (max-width: 480px) {
+  .engine-links .v-btn {
+    min-width: 0;
+    padding-inline: 0.5rem;
+    font-size: 0.75rem;
+    letter-spacing: normal;
+    text-transform: none;
+  }
+}
+</style>
