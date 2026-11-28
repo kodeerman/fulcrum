@@ -26,6 +26,9 @@ const route = useRoute()
 const router = useRouter()
 const workspace = ref(route.query.engine === 'charts' ? 'charts' : 'stats')
 const chartBuilder = ref(null)
+const previewHeading = ref(null)
+const analysisHeading = ref(null)
+const dropActive = ref(false)
 const source = ref(props.studyLabel ? 'study' : 'manual')
 const values = ref('')
 const pasted = ref('')
@@ -238,10 +241,25 @@ function previewTable(raw, name, delimiter) {
   }
 }
 
-async function previewFile(event) {
+function previewFile(event) {
   const file = event.target.files[0]
   event.target.value = ''
-  if (!file) return
+  readCsv(file)
+}
+
+function dropFile(event) {
+  dropActive.value = false
+  if (reading.value) return
+  if (event.dataTransfer.files.length !== 1) {
+    draft.value = null
+    error.value = 'Drop one CSV file at a time.'
+    return
+  }
+  readCsv(event.dataTransfer.files[0])
+}
+
+async function readCsv(file) {
+  if (!file || reading.value) return
   draft.value = null
   error.value = ''
   reading.value = true
@@ -255,6 +273,12 @@ async function previewFile(event) {
     reading.value = false
   }
 }
+
+watch(draft, async data => {
+  if (!data) return
+  await nextTick()
+  previewHeading.value?.focus()
+})
 
 function previewStudy() {
   draft.value = null
@@ -271,7 +295,7 @@ function previewStudy() {
   }
 }
 
-function importTable() {
+async function importTable() {
   dataset.value = draft.value
   draft.value = null
   outcome.value =
@@ -281,6 +305,20 @@ function importTable() {
   group.value = null
   test.value = null
   result.value = null
+  await nextTick()
+  if (workspace.value === 'charts') chartBuilder.value?.focusConfiguration()
+  else analysisHeading.value?.focus()
+}
+
+function submitManual(event) {
+  if (/^dr\.?\s+meowra$/i.test(values.value.trim())) {
+    event.preventDefault()
+    const { href } = router.resolve({ name: 'DrMeowra' })
+    window.open(href, '_blank', 'noopener')
+    return
+  }
+
+  if (event.type === 'submit' && workspace.value === 'stats') calculate()
 }
 
 async function calculate() {
@@ -463,10 +501,11 @@ function exportStats() {
     <v-card variant="outlined" class="pa-5">
       <form
         v-if="source === 'manual'"
-        @submit.prevent="workspace === 'stats' && calculate()"
+        @submit.prevent="submitManual"
       >
         <v-textarea
           v-model="values"
+          @keydown.enter.exact="submitManual"
           label="Numbers"
           hint="Separate numbers with commas, spaces, or new lines."
           maxlength="100000"
@@ -504,20 +543,29 @@ function exportStats() {
         >
       </div>
       <div v-else-if="source === 'csv'">
-        <label class="d-block font-weight-medium mb-2" for="stats-file"
-          >Choose a CSV file</label
+        <div
+          class="csv-drop"
+          :class="{ 'csv-drop--active': dropActive }"
+          @dragover.prevent="dropActive = !reading"
+          @dragleave="dropActive = false"
+          @drop.prevent="dropFile"
         >
-        <input
-          id="stats-file"
-          type="file"
-          accept=".csv,text/csv"
-          :disabled="reading"
-          @change="previewFile"
-        />
-        <p class="text-body-2 text-medium-emphasis mt-2">
-          Use a comma-separated file with headers in the first row. Maximum 5
-          MB.
-        </p>
+          <label class="d-block font-weight-medium mb-2" for="stats-file">
+            Drop a CSV here or choose a file
+          </label>
+          <input
+            id="stats-file"
+            type="file"
+            accept=".csv,text/csv"
+            aria-describedby="stats-file-help"
+            :disabled="reading"
+            @change="previewFile"
+          />
+          <p id="stats-file-help" class="text-body-2 text-medium-emphasis mt-2">
+            Use a comma-separated file with headers in the first row. Maximum 5
+            MB.
+          </p>
+        </div>
         <p v-if="reading" role="status" class="mt-2">Reading file…</p>
       </div>
       <form
@@ -561,7 +609,9 @@ function exportStats() {
     >
 
     <v-card v-if="draft" variant="outlined" class="pa-5 mt-5">
-      <h2 class="text-h6">Preview {{ draft.name }}</h2>
+      <h2 ref="previewHeading" tabindex="-1" class="text-h6">
+        Preview {{ draft.name }}
+      </h2>
       <p class="text-medium-emphasis mb-3">
         Showing up to 5 of {{ draft.rows.length }} rows.
       </p>
@@ -624,7 +674,9 @@ function exportStats() {
       variant="outlined"
       class="pa-5 mt-5"
     >
-      <h2 class="text-h6 mb-3">Analysis settings</h2>
+      <h2 ref="analysisHeading" tabindex="-1" class="text-h6 mb-3">
+        Analysis settings
+      </h2>
       <form @submit.prevent="calculate">
         <div class="settings-grid">
           <label class="settings-field">
@@ -699,6 +751,8 @@ function exportStats() {
       </form>
     </v-card>
 
+    <p v-if="pending" role="status" class="mt-4">Calculating statistics…</p>
+
     <section
       v-if="result && workspace === 'stats'"
       class="mt-7"
@@ -769,6 +823,15 @@ function exportStats() {
 <style scoped>
 .stats-page {
   max-width: 70rem;
+}
+.csv-drop {
+  border: 1px dashed rgba(var(--v-theme-on-surface), 0.42);
+  border-radius: 8px;
+  padding: 1rem;
+}
+.csv-drop--active {
+  border-color: rgb(var(--v-theme-primary));
+  background: rgba(var(--v-theme-primary), 0.08);
 }
 .source-grid,
 .settings-grid {

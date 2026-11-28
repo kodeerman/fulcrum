@@ -127,7 +127,7 @@ function undo() {
   error.value = ''
 }
 
-async function edit() {
+async function focusConfiguration() {
   await nextTick()
   configuration.value?.focus()
 }
@@ -153,7 +153,7 @@ const display = value =>
     : typeof value === 'number'
       ? number.format(value)
       : value
-defineExpose({ useSelection })
+defineExpose({ useSelection, focusConfiguration })
 </script>
 
 <template>
@@ -289,7 +289,7 @@ defineExpose({ useSelection })
     <v-card v-if="chart" variant="outlined" class="pa-5 mt-5">
       <div class="d-flex flex-wrap align-center ga-2 mb-2">
         <h2 class="text-h6 mr-auto">{{ chart.title }}</h2>
-        <v-btn variant="text" @click="edit">Edit chart</v-btn>
+        <v-btn variant="text" @click="focusConfiguration">Edit chart</v-btn>
         <v-btn variant="text" :disabled="!previous" @click="undo"
           >Undo last chart change</v-btn
         >

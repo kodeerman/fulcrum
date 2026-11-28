@@ -74,6 +74,11 @@ const router = createRouter({
           name: 'StatsEngine',
           component: () => import('../views/StatsEngine.vue'),
         },
+        {
+          path: '/dr-meowra',
+          name: 'DrMeowra',
+          component: () => import('../views/DrMeowra.vue'),
+        },
         // TEMP to show pinging server using router
         {
           path: '/PingServer',
@@ -101,7 +106,14 @@ const router = createRouter({
   ],
 })
 
-const publicPages = ['UserLogin', 'UserRegister', 'Confirmed', 'AboutPage', 'StatsEngine']
+const publicPages = [
+  'UserLogin',
+  'UserRegister',
+  'Confirmed',
+  'AboutPage',
+  'StatsEngine',
+  'DrMeowra',
+]
 
 router.beforeEach(async (to, from, next) => {
   if (!publicPages.includes(to.name)) {
