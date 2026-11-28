@@ -27,6 +27,11 @@
         prepend-icon="mdi-calculator"
         title="Stats Engine"
       ></v-list-item>
+      <v-list-item
+        :to="{ name: 'StatsEngine', query: { engine: 'charts' } }"
+        prepend-icon="mdi-chart-bar"
+        title="Chart Display Engine"
+      ></v-list-item>
     </v-list>
   </v-navigation-drawer>
 </template>

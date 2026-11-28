@@ -5,6 +5,9 @@
       <v-col cols="12" class="d-flex flex-wrap align-center ga-3">
         <StudySelector @study-selected="onStudySelected" />
         <v-btn :to="{ name: 'StatsEngine' }" variant="outlined">Stats Engine</v-btn>
+        <v-btn :to="{ name: 'StatsEngine', query: { engine: 'charts' } }" variant="outlined">
+          Chart Display Engine
+        </v-btn>
       </v-col>
     </v-row>
 

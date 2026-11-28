@@ -40,6 +40,9 @@ When the stack is healthy:
 - Stats Engine: <http://localhost/stats>. Open it from the sign-in page header
   or the sidebar after signing in. In Data Analytics, select a study and choose
   **Analyze study data** to use its loaded participant rows.
+- Chart Display Engine: <http://localhost/stats?engine=charts>. Switch between
+  engines to keep working with the same dataset. Use **Visualize selection** on
+  a statistics result to generate a bar chart for that outcome and grouping.
 - Backend health check: <http://localhost/api/ping>
 
 To wipe the database and reseed from scratch:

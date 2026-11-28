@@ -1,6 +1,9 @@
 <script setup>
-import { computed, ref, shallowRef, watch } from 'vue'
+import { computed, nextTick, ref, shallowRef, watch } from 'vue'
 import Papa from 'papaparse'
+import { useRoute, useRouter } from 'vue-router'
+import StatsChartBuilder from '@/components/analytics/StatsChartBuilder.vue'
+import { numericCell } from '@/utility/statsChart'
 import StatsSummaryChart from '@/components/analytics/StatsSummaryChart.vue'
 
 const props = defineProps({
@@ -10,9 +13,6 @@ const props = defineProps({
 
 const MAX_ROWS = 50_000
 const MAX_BYTES = 5 * 1024 * 1024
-const decimal = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i
-const number = cell =>
-  decimal.test(cell) && Number.isFinite(Number(cell)) ? Number(cell) : null
 const sources = [
   ['manual', 'Manual entry', 'Enter a single numeric sample.'],
   ['csv', 'Upload CSV', 'Choose a file with column headers.'],
@@ -22,6 +22,10 @@ const sources = [
     : []),
 ]
 
+const route = useRoute()
+const router = useRouter()
+const workspace = ref(route.query.engine === 'charts' ? 'charts' : 'stats')
+const chartBuilder = ref(null)
 const source = ref(props.studyLabel ? 'study' : 'manual')
 const values = ref('')
 const pasted = ref('')
@@ -61,6 +65,49 @@ const comparisonMeasures = [
   ['p_value', 'p-value'],
 ]
 
+const chartDataset = computed(() => {
+  if (source.value !== 'manual') return dataset.value
+  const cells = values.value.split(/[\s,]+/).filter(Boolean)
+  if (
+    cells.length > MAX_ROWS ||
+    !cells.length ||
+    cells.some(cell => numericCell(cell) === null)
+  )
+    return null
+  return {
+    name: 'Manual sample',
+    fields: [{ title: 'Value', index: 0, numeric: true, type: 'Numeric' }],
+    rows: cells.map(cell => [cell]),
+  }
+})
+
+watch(
+  () => route.query.engine,
+  engine => {
+    if (route.name === 'StatsEngine')
+      workspace.value = engine === 'charts' ? 'charts' : 'stats'
+  },
+)
+
+function setWorkspace(next) {
+  if (route.name === 'StatsEngine') {
+    const query = { ...route.query }
+    if (next === 'charts') query.engine = 'charts'
+    else delete query.engine
+    return router.push({ name: 'StatsEngine', query })
+  }
+  workspace.value = next
+}
+
+async function showChart() {
+  await setWorkspace('charts')
+  await nextTick()
+  chartBuilder.value?.useSelection(
+    source.value === 'manual' ? 0 : outcome.value,
+    group.value,
+  )
+}
+
 const numericFields = computed(
   () => dataset.value?.fields.filter(field => field.numeric) ?? [],
 )
@@ -73,7 +120,7 @@ const analysis = computed(() => {
   let skipped = 0
   if (!dataset.value || outcome.value === null) return { samples, skipped }
   for (const row of dataset.value.rows) {
-    const value = number(row[outcome.value])
+    const value = numericCell(row[outcome.value])
     const label = group.value === null ? 'All rows' : row[group.value]
     if (value === null || !label) {
       skipped++
@@ -139,7 +186,7 @@ function prepare(name, headers, rows) {
     let missing = 0
     for (const row of rows) {
       if (!row[index]) missing++
-      else if (number(row[index]) !== null) numeric++
+      else if (numericCell(row[index]) !== null) numeric++
     }
     const type =
       numeric === 0
@@ -361,11 +408,38 @@ function exportStats() {
 <template>
   <v-container class="stats-page py-8">
     <header class="mb-6">
-      <h1 class="text-h4 mb-2">Stats Engine</h1>
+      <h1 class="text-h4 mb-2">
+        {{ workspace === 'charts' ? 'Chart Display Engine' : 'Stats Engine' }}
+      </h1>
       <p class="text-medium-emphasis">
-        Summarize a numeric sample or compare groups in a dataset.
+        {{
+          workspace === 'charts'
+            ? 'Plot a dataset by choosing the fields to show on each axis.'
+            : 'Summarize a numeric sample or compare groups in a dataset.'
+        }}
       </p>
     </header>
+
+    <div
+      class="d-flex flex-wrap ga-2 mb-5"
+      role="group"
+      aria-label="Analysis workspace"
+    >
+      <v-btn
+        :variant="workspace === 'stats' ? 'tonal' : 'outlined'"
+        :aria-pressed="workspace === 'stats'"
+        @click="setWorkspace('stats')"
+      >
+        Stats Engine
+      </v-btn>
+      <v-btn
+        :variant="workspace === 'charts' ? 'tonal' : 'outlined'"
+        :aria-pressed="workspace === 'charts'"
+        @click="setWorkspace('charts')"
+      >
+        Chart Display Engine
+      </v-btn>
+    </div>
 
     <section aria-labelledby="stats-source">
       <h2 id="stats-source" class="text-h6 mb-3">Data source</h2>
@@ -387,7 +461,10 @@ function exportStats() {
     </section>
 
     <v-card variant="outlined" class="pa-5">
-      <form v-if="source === 'manual'" @submit.prevent="calculate">
+      <form
+        v-if="source === 'manual'"
+        @submit.prevent="workspace === 'stats' && calculate()"
+      >
         <v-textarea
           v-model="values"
           label="Numbers"
@@ -398,7 +475,12 @@ function exportStats() {
           variant="outlined"
           rows="4"
         />
-        <v-btn class="mt-4" color="primary" type="submit" :loading="pending"
+        <v-btn
+          v-if="workspace === 'stats'"
+          class="mt-4"
+          color="primary"
+          type="submit"
+          :loading="pending"
           >Calculate</v-btn
         >
         <v-btn
@@ -521,7 +603,27 @@ function exportStats() {
       >
     </v-card>
 
-    <v-card v-if="dataset" variant="outlined" class="pa-5 mt-5">
+    <StatsChartBuilder
+      v-if="chartDataset"
+      v-show="workspace === 'charts'"
+      ref="chartBuilder"
+      :dataset="chartDataset"
+      :outcome="outcome"
+      :group="group"
+      @download-csv="downloadCsv"
+    />
+    <p
+      v-else-if="workspace === 'charts' && source === 'manual'"
+      class="text-medium-emphasis mt-4"
+    >
+      Enter a sample of finite numbers to configure a chart.
+    </p>
+
+    <v-card
+      v-if="dataset && workspace === 'stats'"
+      variant="outlined"
+      class="pa-5 mt-5"
+    >
       <h2 class="text-h6 mb-3">Analysis settings</h2>
       <form @submit.prevent="calculate">
         <div class="settings-grid">
@@ -598,7 +700,7 @@ function exportStats() {
     </v-card>
 
     <section
-      v-if="result"
+      v-if="result && workspace === 'stats'"
       class="mt-7"
       aria-labelledby="stats-results"
       aria-live="polite"
@@ -611,6 +713,9 @@ function exportStats() {
             }}<span v-if="result.grouping"> by {{ result.grouping }}</span>
           </p>
         </div>
+        <v-btn v-if="chartDataset" variant="outlined" @click="showChart"
+          >Visualize selection</v-btn
+        >
         <v-btn variant="outlined" @click="exportStats"
           >Download statistics CSV</v-btn
         >

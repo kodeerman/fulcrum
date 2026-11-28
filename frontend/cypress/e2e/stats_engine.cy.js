@@ -55,4 +55,31 @@ describe('Stats Engine', () => {
         ])
       })
   })
+
+  it('uses the imported dataset in both engines and preserves it when switching', () => {
+    cy.visit('/stats')
+    cy.contains('button', 'Paste a table').click()
+    cy.get('textarea').type(
+      'condition,score{enter}A,2{enter}A,4{enter}B,6{enter}B,8',
+    )
+    cy.contains('button', 'Preview table').click()
+    cy.contains('button', 'Import dataset').click()
+    cy.get('#stats-group').select('condition')
+    cy.contains('button', 'Calculate').click()
+    cy.contains('button', 'Visualize selection').click()
+    cy.location('search').should('eq', '?engine=charts')
+    cy.get('canvas[role="img"]').should('be.visible')
+    cy.contains('tr', /A\s*3\s*2/).should('be.visible')
+
+    cy.contains('label', 'Chart type').find('select').select('Box plot')
+    cy.contains('button', 'Generate chart').click()
+    cy.contains('th', 'First quartile').should('be.visible')
+    cy.contains('button', 'Undo last chart change').click()
+    cy.contains('tr', /A\s*3\s*2/).should('be.visible')
+
+    cy.go('back')
+    cy.contains('h2', 'Descriptive statistics').should('be.visible')
+    cy.go('forward')
+    cy.contains('tr', /A\s*3\s*2/).should('be.visible')
+  })
 })

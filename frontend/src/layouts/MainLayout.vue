@@ -3,7 +3,7 @@
     <v-main>
       <GlobalTopBar />
       <GlobalNavBar v-if="showNavBar" />
-      <router-view :key="$route.fullPath" />
+      <router-view :key="$route.name === 'StatsEngine' ? $route.name : $route.fullPath" />
     </v-main>
   </v-app>
 </template>
