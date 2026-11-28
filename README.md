@@ -39,7 +39,10 @@ When the stack is healthy:
 - Frontend: <http://localhost/>
 - Stats Engine: <http://localhost/stats>. Open it from the sign-in page header
   or the sidebar after signing in. In Data Analytics, select a study and choose
-  **Analyze study data** to use its loaded participant rows.
+  **Analyze study data** to preview trials from completed, valid sessions.
+  The same button is available after **Save and finish session** and in the
+  study panel. Import the preview into either engine or choose **Download
+  analysis CSV**.
 - Chart Display Engine: <http://localhost/stats?engine=charts>. Switch between
   engines to keep working with the same dataset. Use **Visualize selection** on
   a statistics result to generate a bar chart for that outcome and grouping.

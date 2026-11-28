@@ -1,14 +1,14 @@
 <script setup>
-import { computed, nextTick, ref, shallowRef, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, shallowRef, watch } from 'vue'
 import Papa from 'papaparse'
 import { useRoute, useRouter } from 'vue-router'
+import { auth } from '@/stores/auth'
 import StatsChartBuilder from '@/components/analytics/StatsChartBuilder.vue'
 import { numericCell } from '@/utility/statsChart'
 import StatsSummaryChart from '@/components/analytics/StatsSummaryChart.vue'
 
 const props = defineProps({
-  studyLabel: { type: String, default: '' },
-  studyRows: { type: Array, default: () => [] },
+  studyId: { type: [Number, String], default: null },
 })
 
 const MAX_ROWS = 50_000
@@ -17,9 +17,7 @@ const sources = [
   ['manual', 'Manual entry', 'Enter a single numeric sample.'],
   ['csv', 'Upload CSV', 'Choose a file with column headers.'],
   ['paste', 'Paste a table', 'Paste CSV or spreadsheet cells with headers.'],
-  ...(props.studyLabel
-    ? [['study', 'Study data', 'Use participant metrics from Study Analytics.']]
-    : []),
+  ['study', 'Use study data', 'Analyze completed trials from a Fulcrum study.'],
 ]
 
 const route = useRoute()
@@ -29,7 +27,7 @@ const chartBuilder = ref(null)
 const previewHeading = ref(null)
 const analysisHeading = ref(null)
 const dropActive = ref(false)
-const source = ref(props.studyLabel ? 'study' : 'manual')
+const source = ref(props.studyId ? 'study' : 'manual')
 const values = ref('')
 const pasted = ref('')
 const draft = shallowRef(null)
@@ -121,7 +119,13 @@ const groupingFields = computed(
 const analysis = computed(() => {
   const samples = new Map()
   let skipped = 0
-  if (!dataset.value || outcome.value === null) return { samples, skipped }
+  let repeatedParticipants = false
+  const participants = new Set()
+  if (!dataset.value || outcome.value === null)
+    return { samples, skipped, repeatedParticipants }
+  const participantIndex = dataset.value.fields.findIndex(
+    field => field.title === 'Participant code',
+  )
   for (const row of dataset.value.rows) {
     const value = numericCell(row[outcome.value])
     const label = group.value === null ? 'All rows' : row[group.value]
@@ -129,12 +133,19 @@ const analysis = computed(() => {
       skipped++
       continue
     }
+    if (participantIndex !== -1) {
+      const participant = row[participantIndex]
+      if (!participant || participants.has(participant))
+        repeatedParticipants = true
+      participants.add(participant)
+    }
     if (!samples.has(label)) samples.set(label, [])
     samples.get(label).push(value)
   }
-  return { samples, skipped }
+  return { samples, skipped, repeatedParticipants }
 })
 const tests = computed(() => {
+  if (analysis.value.repeatedParticipants) return []
   const samples = [...analysis.value.samples.values()]
   if (samples.length < 2 || samples.some(sample => sample.length < 2)) return []
   const options = [{ title: 'One-way ANOVA', value: 'anova' }]
@@ -280,20 +291,39 @@ watch(draft, async data => {
   previewHeading.value?.focus()
 })
 
-function previewStudy() {
+async function previewStudy() {
+  if (reading.value || !props.studyId) return
   draft.value = null
   error.value = ''
-  const headers = ['Trial count', 'Average completion time (s)']
-  const rows = props.studyRows.map(row => [
-    String(row.trialCount ?? ''),
-    row.completionTime > 0 ? String(row.completionTime) : '',
-  ])
+  reading.value = true
   try {
-    prepare(props.studyLabel, headers, rows)
+    const response = await fetch(
+      `/api/analytics/${encodeURIComponent(props.studyId)}/analysis-dataset`,
+    )
+    if (!response.headers.get('content-type')?.includes('application/json'))
+      throw new Error('The study data service is unavailable. Try again.')
+    const data = await response.json()
+    if (!response.ok)
+      throw new Error(data.error || 'Study data could not be loaded.')
+    if (!data.rows.length)
+      throw new Error(
+        'This study has no trials from completed, valid sessions yet.',
+      )
+    prepare(
+      data.name,
+      data.headers,
+      data.rows.map(row => row.map(cell => String(cell ?? '').trim())),
+    )
   } catch (err) {
     error.value = err.message
+  } finally {
+    reading.value = false
   }
 }
+
+onMounted(() => {
+  if (props.studyId) previewStudy()
+})
 
 async function importTable() {
   dataset.value = draft.value
@@ -302,7 +332,15 @@ async function importTable() {
     numericFields.value.find(field => field.type === 'Numeric')?.index ??
     numericFields.value[0]?.index ??
     null
-  group.value = null
+  const condition = dataset.value.fields.findIndex(
+    field => field.title === 'Condition',
+  )
+  group.value =
+    source.value === 'study' &&
+    condition >= 0 &&
+    dataset.value.rows.some(row => row[condition])
+      ? condition
+      : null
   test.value = null
   result.value = null
   await nextTick()
@@ -385,11 +423,12 @@ function downloadCsv(name, rows) {
   setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
-function exportData() {
-  downloadCsv('fulcrum-dataset.csv', [
-    dataset.value.fields.map(field => field.title),
-    ...dataset.value.rows,
-  ])
+function exportData(table = dataset.value) {
+  const name =
+    source.value === 'study'
+      ? `fulcrum-study-${props.studyId}-analysis.csv`
+      : 'fulcrum-dataset.csv'
+  downloadCsv(name, [table.fields.map(field => field.title), ...table.rows])
 }
 
 function exportStats() {
@@ -499,10 +538,7 @@ function exportStats() {
     </section>
 
     <v-card variant="outlined" class="pa-5">
-      <form
-        v-if="source === 'manual'"
-        @submit.prevent="submitManual"
-      >
+      <form v-if="source === 'manual'" @submit.prevent="submitManual">
         <v-textarea
           v-model="values"
           @keydown.enter.exact="submitManual"
@@ -514,21 +550,22 @@ function exportStats() {
           variant="outlined"
           rows="4"
         />
-        <v-btn
-          v-if="workspace === 'stats'"
-          class="mt-4"
-          color="primary"
-          type="submit"
-          :loading="pending"
-          >Calculate</v-btn
-        >
-        <v-btn
-          class="mt-4 ml-2"
-          variant="text"
-          :disabled="pending"
-          @click="reset"
-          >Reset</v-btn
-        >
+        <div class="d-flex flex-wrap ga-2 mt-4">
+          <template v-if="workspace === 'stats'">
+            <v-btn color="primary" type="submit" :loading="pending"
+              >Calculate</v-btn
+            >
+            <v-btn
+              variant="outlined"
+              prepend-icon="mdi-chart-bar"
+              :disabled="pending || !chartDataset"
+              @click="showChart"
+            >
+              Generate chart
+            </v-btn>
+          </template>
+          <v-btn variant="text" :disabled="pending" @click="reset">Reset</v-btn>
+        </div>
       </form>
       <div v-else-if="dataset" class="d-flex flex-wrap align-center ga-3">
         <div class="mr-auto">
@@ -537,7 +574,11 @@ function exportStats() {
             {{ dataset.rows.length }} rows · {{ dataset.fields.length }} columns
           </p>
         </div>
-        <v-btn variant="outlined" @click="exportData">Download data CSV</v-btn>
+        <v-btn variant="outlined" @click="exportData()">
+          {{
+            source === 'study' ? 'Download analysis CSV' : 'Download data CSV'
+          }}
+        </v-btn>
         <v-btn variant="text" :disabled="pending" @click="reset"
           >Replace dataset</v-btn
         >
@@ -582,20 +623,32 @@ function exportStats() {
           >Preview table</v-btn
         >
       </form>
+      <div v-else-if="studyId">
+        <p class="mb-3">
+          Preview one row per trial from completed, valid sessions. When trial
+          timestamps are missing, duration is estimated from the last recorded
+          tracking event.
+        </p>
+        <v-btn color="primary" :loading="reading" @click="previewStudy">{{
+          draft ? 'Refresh preview' : 'Preview study data'
+        }}</v-btn>
+        <p v-if="reading" role="status" class="mt-2">Loading study trials…</p>
+      </div>
       <div v-else>
         <p class="mb-3">
-          Use trial counts and average completion times for the participant rows
-          loaded in Study Analytics.
+          Open a study from User Studies or Data Analytics and choose Analyze
+          study data.
         </p>
         <v-btn
-          color="primary"
-          :disabled="!studyRows.length"
-          @click="previewStudy"
-          >Preview study data</v-btn
+          :to="{ name: auth.isAuthenticated ? 'DataAnalytics' : 'UserLogin' }"
+          variant="outlined"
         >
-        <p v-if="!studyRows.length" class="text-medium-emphasis mt-2">
-          No participant rows are available yet.
-        </p>
+          {{
+            auth.isAuthenticated
+              ? 'Open Data Analytics'
+              : 'Sign in to use study data'
+          }}
+        </v-btn>
       </div>
     </v-card>
 
@@ -647,6 +700,14 @@ function exportStats() {
         @click="importTable"
       >
         Import dataset
+      </v-btn>
+      <v-btn
+        v-if="source === 'study'"
+        class="mt-4 ml-2"
+        variant="outlined"
+        @click="exportData(draft)"
+      >
+        Download analysis CSV
       </v-btn>
       <v-btn class="mt-4 ml-2" variant="text" @click="draft = null"
         >Cancel preview</v-btn
@@ -727,7 +788,11 @@ function exportStats() {
           Rows need a finite numeric outcome and, when grouping, a nonblank
           group.
         </p>
-        <p v-if="group !== null && !tests.length" class="text-body-2 mb-2">
+        <p v-if="analysis.repeatedParticipants" class="text-body-2 mb-2">
+          Independent-group tests need one usable row per participant with a
+          participant code. You can still summarize and chart these data.
+        </p>
+        <p v-else-if="group !== null && !tests.length" class="text-body-2 mb-2">
           Comparison tests require at least two groups with at least two values
           each.
         </p>
@@ -740,14 +805,24 @@ function exportStats() {
               : 'Welch’s test allows unequal group variances.'
           }}
         </p>
-        <v-btn
-          class="mt-3"
-          color="primary"
-          type="submit"
-          :loading="pending"
-          :disabled="!analysis.samples.size"
-          >Calculate</v-btn
-        >
+        <div class="d-flex flex-wrap ga-2 mt-3">
+          <v-btn
+            color="primary"
+            type="submit"
+            :loading="pending"
+            :disabled="!analysis.samples.size"
+          >
+            Calculate
+          </v-btn>
+          <v-btn
+            variant="outlined"
+            prepend-icon="mdi-chart-bar"
+            :disabled="pending || !analysis.samples.size"
+            @click="showChart"
+          >
+            Generate chart
+          </v-btn>
+        </div>
       </form>
     </v-card>
 

@@ -1,36 +1,51 @@
 <template>
-  <v-app-bar color="primary">
-    <v-app-bar-title>
-      <router-link to="/" class="fulcrum-home">Fulcrum</router-link>
-    </v-app-bar-title>
-
-    <v-spacer></v-spacer>
+  <v-app-bar color="primary" class="fulcrum-toolbar" elevation="1" :order="-1">
+    <div class="toolbar-brand">
+      <router-link to="/" class="fulcrum-home" aria-label="Fulcrum home">
+        <span class="home-icon"
+          ><v-icon icon="mdi-home-outline" size="18"
+        /></span>
+        <span>Fulcrum</span>
+      </router-link>
+    </div>
 
     <nav aria-label="Analysis engines" class="engine-links">
       <v-btn
-        :to="{ name: 'StatsEngine' }"
-        :active="
-          $route.name === 'StatsEngine' && $route.query.engine !== 'charts'
-        "
-        variant="text"
+        :to="{ name: 'StatsEngine', query: studyQuery }"
+        :active="activeEngine === 'stats'"
+        :aria-current="activeEngine === 'stats' ? 'page' : undefined"
+        aria-label="Stats Engine"
+        class="engine-button"
+        variant="flat"
       >
-        Stats Engine
+        <v-icon icon="mdi-calculator-variant-outline" size="18" />
+        <span class="engine-label">Stats Engine</span>
+        <span class="engine-label-short" aria-hidden="true">Stats</span>
       </v-btn>
       <v-btn
-        :to="{ name: 'StatsEngine', query: { engine: 'charts' } }"
-        :active="
-          $route.name === 'StatsEngine' && $route.query.engine === 'charts'
-        "
-        variant="text"
+        :to="{
+          name: 'StatsEngine',
+          query: { ...studyQuery, engine: 'charts' },
+        }"
+        :active="activeEngine === 'charts'"
+        :aria-current="activeEngine === 'charts' ? 'page' : undefined"
+        aria-label="Chart Engine"
+        class="engine-button"
+        variant="flat"
       >
-        Chart Engine
+        <v-icon icon="mdi-chart-bar" size="18" />
+        <span class="engine-label">Chart Engine</span>
+        <span class="engine-label-short" aria-hidden="true">Charts</span>
       </v-btn>
     </nav>
 
-    <!-- Always show About button -->
-    <v-btn icon aria-label="About Fulcrum" @click="goToAbout">
-      <v-icon>mdi-help-circle-outline</v-icon>
-    </v-btn>
+    <v-btn
+      icon="mdi-help-circle-outline"
+      aria-label="About Fulcrum"
+      class="toolbar-action"
+      variant="text"
+      @click="goToAbout"
+    />
 
     <!-- Only show if user is authenticated -->
     <template v-if="auth.isAuthenticated">
@@ -41,11 +56,13 @@
         @update:modelValue="onMenuToggle"
       >
         <template #activator="{ props }">
-          <v-btn icon v-bind="props" size="large">
-            <v-avatar color="primary" size="48">
-              <v-icon size="32">mdi-account-circle</v-icon>
-            </v-avatar>
-          </v-btn>
+          <v-btn
+            v-bind="props"
+            icon="mdi-account-circle-outline"
+            aria-label="Account menu"
+            class="toolbar-action"
+            variant="text"
+          />
         </template>
 
         <v-slide-y-transition mode="in-out">
@@ -126,6 +143,17 @@ export default {
       menuOpen: false,
     }
   },
+  computed: {
+    studyQuery() {
+      return this.$route.name === 'StatsEngine' && this.$route.query.study
+        ? { study: this.$route.query.study }
+        : {}
+    },
+    activeEngine() {
+      if (this.$route.name !== 'StatsEngine') return null
+      return this.$route.query.engine === 'charts' ? 'charts' : 'stats'
+    },
+  },
   watch: {
     'auth.user': {
       handler(newUser) {
@@ -179,27 +207,125 @@ export default {
 </script>
 
 <style scoped>
+.fulcrum-toolbar {
+  background-image: linear-gradient(105deg, #102944, #16436b 62%, #153552);
+}
+
+.toolbar-brand {
+  flex: 1 0 auto;
+  margin-inline-start: clamp(0.625rem, 2.5vw, 2rem);
+}
+
 .fulcrum-home {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.625rem;
+  padding: 0.25rem;
+  border-radius: 0.5rem;
   color: inherit;
+  font-size: 1.15rem;
+  font-weight: 700;
   text-decoration: none;
 }
 
-.fulcrum-home:hover {
-  text-decoration: underline;
+.home-icon {
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border: 1px solid #ffffff38;
+  border-radius: 0.5rem;
+  background: #ffffff15;
+}
+
+.fulcrum-home:hover .home-icon {
+  background: #ffffff2a;
 }
 
 .engine-links {
   display: flex;
   flex-shrink: 0;
+  gap: 0.375rem;
+  padding: 0.25rem;
+  border: 1px solid #ffffff26;
+  border-radius: 0.75rem;
+  background: #081c3360;
+  margin-inline-end: 0.625rem;
+}
+
+.engine-button {
+  border-radius: 0.5rem;
+  background: #ffffff1c;
+  color: #fff;
+  font-weight: 600;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+.engine-button :deep(.v-btn__content) {
+  gap: 0.45rem;
+}
+
+.engine-button[aria-current='page'] {
+  background: #d8eeff;
+  color: #102e4c;
+}
+
+.engine-button[aria-current='page'] :deep(.v-btn__overlay) {
+  opacity: 0;
+}
+
+.toolbar-action {
+  width: 2.5rem;
+  height: 2.5rem;
+  margin-inline-end: 0.375rem;
+}
+
+.fulcrum-home:focus-visible,
+.engine-button:focus-visible,
+.toolbar-action:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}
+
+.engine-label-short {
+  display: none;
 }
 
 @media (max-width: 480px) {
-  .engine-links .v-btn {
+  .fulcrum-home {
+    font-size: 1rem;
+  }
+
+  .home-icon,
+  .engine-button .v-icon {
+    display: none;
+  }
+
+  .engine-links {
+    gap: 0.25rem;
+    margin-inline-end: 0.25rem;
+  }
+
+  .engine-button {
     min-width: 0;
     padding-inline: 0.5rem;
     font-size: 0.75rem;
-    letter-spacing: normal;
-    text-transform: none;
+  }
+
+  .toolbar-action {
+    width: 2.25rem;
+    height: 2.25rem;
+    margin-inline-end: 0.125rem;
+  }
+}
+@media (max-width: 380px) {
+  .engine-label {
+    display: none;
+  }
+
+  .engine-label-short {
+    display: inline;
   }
 }
 </style>

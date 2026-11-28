@@ -1957,6 +1957,66 @@ def get_participants_route(study_id):
         return handle_route_error(e, "get_participants_data", study_id)
 
 
+@analytics_bp.get("/<int:study_id>/analysis-dataset")
+def analysis_dataset(study_id):
+    """Build a flat analysis table from the study's finalized sessions."""
+    from flask_security import current_user
+    from app.utility.analytics.data_loader import load_study
+
+    if not current_user.is_authenticated:
+        return jsonify(error="Sign in to analyze study data."), 401
+
+    try:
+        with get_db_connection().cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT s.study_name
+                FROM study s
+                JOIN study_user_role sur ON sur.study_id = s.study_id
+                WHERE s.study_id = %s AND sur.user_id = %s
+                """,
+                (study_id, current_user.id),
+            )
+            study = cursor.fetchone()
+            if study is None:
+                return jsonify(error="You do not have access to this study."), 403
+            trials = load_study(
+                cursor,
+                study_id,
+                base_dir=current_app.config["RESULTS_BASE_DIR_PATH"],
+                prefer="db",
+                completed_only=True,
+            ).trials
+
+        if trials.height > 50_000:
+            return jsonify(error="This study exceeds the 50,000-row analysis limit."), 422
+
+        fields = (
+            "participant_id", "trial_id", "task_name", "factor_name",
+            "duration_s", "duration_source",
+        )
+        rows = [
+            [
+                f"P-{participant}" if participant is not None else None,
+                f"T-{trial}", task, condition, duration,
+                {"db": "Trial timestamps", "csv": "Last recorded event"}.get(source),
+            ]
+            for participant, trial, task, condition, duration, source
+            in trials.select(fields).iter_rows()
+        ]
+        response = jsonify(
+            name=study[0],
+            headers=["Participant code", "Trial code", "Task", "Condition",
+                     "Duration (s)", "Duration source"],
+            rows=rows,
+        )
+        response.cache_control.no_store = True
+        return response
+    except Exception:
+        logger.exception("Could not build analysis data for study %s", study_id)
+        return jsonify(error="Study data could not be loaded. Try again."), 500
+
+
 @analytics_bp.route("/<study_id>/export", methods=["GET"])
 def export_data_route(study_id):
     # Export study data as CSV, JSON, or ZIP

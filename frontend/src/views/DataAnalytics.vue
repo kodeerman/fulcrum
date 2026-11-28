@@ -60,8 +60,7 @@
       <StatsEngine
         v-if="showStats"
         :key="selectedStudy"
-        :study-label="`Study ${selectedStudy} participants`"
-        :study-rows="participantData"
+        :study-id="selectedStudy"
       />
 
       <!-- Summary cards with DashboardSummaryCard and CustomFormulaInput in the same row -->

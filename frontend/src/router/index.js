@@ -72,6 +72,13 @@ const router = createRouter({
         {
           path: '/stats',
           name: 'StatsEngine',
+          props: route => ({
+            studyId:
+              typeof route.query.study === 'string' &&
+              /^\d+$/.test(route.query.study)
+                ? route.query.study
+                : null,
+          }),
           component: () => import('../views/StatsEngine.vue'),
         },
         {
